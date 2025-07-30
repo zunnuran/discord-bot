@@ -10,6 +10,7 @@ import Notifications from "@/pages/notifications";
 import Servers from "@/pages/servers";
 import Analytics from "@/pages/analytics";
 import SettingsPage from "@/pages/settings";
+import ServerDetails from "@/pages/server-details";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/create" component={CreateNotification} />
       <Route path="/notifications" component={Notifications} />
       <Route path="/servers" component={Servers} />
+      <Route path="/servers/:serverId" component={ServerDetails} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />

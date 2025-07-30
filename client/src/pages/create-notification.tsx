@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import {
   Form,
   FormControl,
@@ -41,14 +41,19 @@ const formSchema = z.object({
 export default function CreateNotification() {
   const [selectedServerId, setSelectedServerId] = useState<string>("");
   const [, setLocation] = useLocation();
+  const searchParams = new URLSearchParams(useSearch());
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Get URL parameters
+  const preselectedServerId = searchParams.get('serverId') || "";
+  const preselectedChannelId = searchParams.get('channelId') || "";
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      serverId: "",
-      channelId: "",
+      serverId: preselectedServerId,
+      channelId: preselectedChannelId,
       message: "",
       scheduleDate: "",
       scheduleTime: "",

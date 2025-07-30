@@ -1,4 +1,4 @@
-import { Calendar, BarChart3, Settings, Server, List, Plus, LogOut } from "lucide-react";
+import { Calendar, BarChart3, Settings, Server, Bell, Plus, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { Link, useLocation } from "wouter";
 const navigation = [
   { name: "Dashboard", icon: BarChart3, href: "/" },
   { name: "Create Notification", icon: Plus, href: "/create" },
-  { name: "Scheduled Messages", icon: List, href: "/notifications" },
+  { name: "Scheduled Messages", icon: Bell, href: "/notifications" },
   { name: "Servers", icon: Server, href: "/servers" },
   { name: "Analytics", icon: BarChart3, href: "/analytics" },
   { name: "Settings", icon: Settings, href: "/settings" },

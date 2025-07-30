@@ -77,12 +77,16 @@ export default function Servers() {
                 Server ID: {server.id}
               </div>
               <div className="flex space-x-2">
-                <Button variant="outline" size="sm">
-                  View Details
-                </Button>
-                <Button size="sm" className="discord-primary discord-primary-hover text-white">
-                  Create Notification
-                </Button>
+                <Link href={`/servers/${server.id}`}>
+                  <Button variant="outline" size="sm">
+                    View Details
+                  </Button>
+                </Link>
+                <Link href={`/create?serverId=${server.id}`}>
+                  <Button size="sm" className="discord-primary discord-primary-hover text-white">
+                    Create Notification
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
@@ -107,7 +111,9 @@ export default function Servers() {
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Discord Servers</h1>
               <p className="text-gray-600 dark:text-gray-300 mt-2">Manage your connected Discord servers and channels</p>
             </div>
-            <Button className="discord-primary discord-primary-hover text-white">
+            <Button className="discord-primary discord-primary-hover text-white" onClick={() => {
+              window.open('https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=8&scope=bot', '_blank');
+            }}>
               <Server className="mr-2 h-4 w-4" />
               Add Server
             </Button>
