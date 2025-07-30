@@ -95,6 +95,7 @@ export class MemStorage implements IStorage {
     const user: User = { 
       ...insertUser, 
       id,
+      avatar: insertUser.avatar || null,
       createdAt: new Date()
     };
     this.users.set(id, user);
@@ -119,8 +120,14 @@ export class MemStorage implements IStorage {
   }
 
   async createServer(server: InsertDiscordServer): Promise<DiscordServer> {
-    this.servers.set(server.id, server);
-    return server;
+    const newServer: DiscordServer = {
+      ...server,
+      icon: server.icon || null,
+      memberCount: server.memberCount || null,
+      isConnected: server.isConnected || null,
+    };
+    this.servers.set(server.id, newServer);
+    return newServer;
   }
 
   async updateServer(id: string, updateData: Partial<InsertDiscordServer>): Promise<DiscordServer | undefined> {
@@ -160,6 +167,11 @@ export class MemStorage implements IStorage {
     const notification: Notification = {
       ...insertNotification,
       id,
+      endDate: insertNotification.endDate || null,
+      isActive: insertNotification.isActive || null,
+      timezone: insertNotification.timezone || null,
+      mentions: insertNotification.mentions || null,
+      embeds: insertNotification.embeds || null,
       createdAt: new Date(),
       lastSent: null,
       nextScheduled: insertNotification.scheduleDate,
@@ -190,6 +202,7 @@ export class MemStorage implements IStorage {
     const notificationLog: NotificationLog = {
       ...log,
       id,
+      error: log.error || null,
       sentAt: new Date(),
     };
     this.notificationLogs.set(id, notificationLog);

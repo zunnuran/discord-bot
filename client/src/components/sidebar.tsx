@@ -2,17 +2,20 @@ import { Calendar, BarChart3, Settings, Server, List, Plus, LogOut } from "lucid
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Link, useLocation } from "wouter";
 
 const navigation = [
-  { name: "Dashboard", icon: BarChart3, href: "/", current: true },
-  { name: "Create Notification", icon: Plus, href: "/create", current: false },
-  { name: "Scheduled Messages", icon: List, href: "/notifications", current: false },
-  { name: "Servers", icon: Server, href: "/servers", current: false },
-  { name: "Analytics", icon: BarChart3, href: "/analytics", current: false },
-  { name: "Settings", icon: Settings, href: "/settings", current: false },
+  { name: "Dashboard", icon: BarChart3, href: "/" },
+  { name: "Create Notification", icon: Plus, href: "/create" },
+  { name: "Scheduled Messages", icon: List, href: "/notifications" },
+  { name: "Servers", icon: Server, href: "/servers" },
+  { name: "Analytics", icon: BarChart3, href: "/analytics" },
+  { name: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export default function Sidebar() {
+  const [location] = useLocation();
+  
   return (
     <div className="w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col">
       {/* Logo & Brand */}
@@ -47,19 +50,20 @@ export default function Sidebar() {
 
       {/* Navigation Menu */}
       <nav className="flex-1 p-4 space-y-2">
-        {navigation.map((item) => (
-          <Button
-            key={item.name}
-            variant={item.current ? "default" : "ghost"}
-            className={`w-full justify-start ${item.current ? "discord-primary text-white" : ""}`}
-            asChild
-          >
-            <a href={item.href} className="flex items-center space-x-3">
-              <item.icon className="h-4 w-4" />
-              <span className="text-sm font-medium">{item.name}</span>
-            </a>
-          </Button>
-        ))}
+        {navigation.map((item) => {
+          const isActive = location === item.href;
+          return (
+            <Link key={item.name} href={item.href}>
+              <Button
+                variant={isActive ? "default" : "ghost"}
+                className={`w-full justify-start ${isActive ? "discord-primary text-white" : ""}`}
+              >
+                <item.icon className="h-4 w-4 mr-3" />
+                <span className="text-sm font-medium">{item.name}</span>
+              </Button>
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Bot Status */}

@@ -21,7 +21,12 @@ export default function Dashboard() {
     queryKey: ["/api/notifications"],
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<{
+    activeNotifications: number;
+    connectedServers: number;
+    messagesSent: number;
+    successRate: number;
+  }>({
     queryKey: ["/api/stats"],
   });
 
