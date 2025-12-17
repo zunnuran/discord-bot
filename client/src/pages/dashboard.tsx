@@ -7,8 +7,9 @@ import CreateNotificationModal from "@/components/create-notification-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Bell } from "lucide-react";
-import type { DiscordServer, Notification } from "@shared/schema";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, Bell, CheckCircle, XCircle, Clock } from "lucide-react";
+import type { DiscordServer, Notification, NotificationLog } from "@shared/schema";
 
 export default function Dashboard() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -30,7 +31,12 @@ export default function Dashboard() {
     queryKey: ["/api/stats"],
   });
 
+  const { data: recentLogs = [] } = useQuery<NotificationLog[]>({
+    queryKey: ["/api/logs/recent"],
+  });
+
   const recentNotifications = notifications.slice(0, 3);
+  const failedLogs = recentLogs.filter(log => log.status === "failed");
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
@@ -52,12 +58,56 @@ export default function Dashboard() {
                 <Plus className="mr-2 h-4 w-4" />
                 New Notification
               </Button>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500">
-                  3
-                </Badge>
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications-bell">
+                    <Bell className="h-5 w-5" />
+                    {recentLogs.length > 0 && (
+                      <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500">
+                        {recentLogs.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="end">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Recent Activity</h4>
+                    {recentLogs.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+                        No recent activity
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {recentLogs.slice(0, 10).map((log) => (
+                          <div
+                            key={log.id}
+                            className="flex items-start space-x-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800"
+                          >
+                            {log.status === "success" ? (
+                              <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-900 dark:text-white">
+                                Notification #{log.notificationId}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(log.sentAt).toLocaleString()}
+                              </p>
+                              {log.error && (
+                                <p className="text-xs text-red-600 dark:text-red-400 truncate">
+                                  {log.error}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </header>

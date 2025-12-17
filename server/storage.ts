@@ -65,6 +65,7 @@ export interface IStorage {
   // Notification log operations
   createNotificationLog(log: InsertNotificationLog): Promise<NotificationLog>;
   getNotificationLogs(notificationId: number): Promise<NotificationLog[]>;
+  getRecentLogs(userId?: number, limit?: number): Promise<NotificationLog[]>;
 
   // Bot settings operations
   getBotSettings(): Promise<BotSettings | undefined>;
@@ -410,6 +411,30 @@ export class DatabaseStorage implements IStorage {
       .from(notificationLogs)
       .where(eq(notificationLogs.notificationId, notificationId))
       .orderBy(desc(notificationLogs.sentAt));
+  }
+
+  async getRecentLogs(userId?: number, limit: number = 20): Promise<NotificationLog[]> {
+    if (userId) {
+      const results = await db
+        .select({
+          id: notificationLogs.id,
+          notificationId: notificationLogs.notificationId,
+          sentAt: notificationLogs.sentAt,
+          status: notificationLogs.status,
+          error: notificationLogs.error,
+        })
+        .from(notificationLogs)
+        .innerJoin(notifications, eq(notificationLogs.notificationId, notifications.id))
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notificationLogs.sentAt))
+        .limit(limit);
+      return results as NotificationLog[];
+    }
+    return await db
+      .select()
+      .from(notificationLogs)
+      .orderBy(desc(notificationLogs.sentAt))
+      .limit(limit);
   }
 
   // Bot settings operations

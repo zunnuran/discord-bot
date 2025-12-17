@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 
 const navigation = [
   { name: "Dashboard", icon: BarChart3, href: "/" },
@@ -15,6 +16,7 @@ const navigation = [
 
 export default function Sidebar() {
   const [location] = useLocation();
+  const { user, logout } = useAuth();
   
   return (
     <div className="w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col">
@@ -36,10 +38,10 @@ export default function Sidebar() {
         <div className="flex items-center space-x-3">
           <Avatar className="h-10 w-10">
             <AvatarImage src="" alt="User avatar" />
-            <AvatarFallback>JD</AvatarFallback>
+            <AvatarFallback>{user?.username?.slice(0, 2).toUpperCase() || "U"}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">JohnDoe#1234</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{user?.username || "User"}</p>
             <div className="flex items-center text-xs text-green-500">
               <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
               Online
@@ -75,7 +77,13 @@ export default function Sidebar() {
           </div>
           <Badge variant="secondary" className="text-xs">v2.1.0</Badge>
         </div>
-        <Button variant="ghost" size="sm" className="w-full mt-2 justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="w-full mt-2 justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+          onClick={() => logout()}
+          data-testid="button-logout"
+        >
           <LogOut className="h-4 w-4 mr-2" />
           Sign Out
         </Button>

@@ -8,6 +8,7 @@ import Dashboard from "@/pages/dashboard";
 import Auth from "@/pages/auth";
 import CreateNotification from "@/pages/create-notification";
 import Notifications from "@/pages/notifications";
+import EditNotification from "@/pages/edit-notification";
 import Servers from "@/pages/servers";
 import Analytics from "@/pages/analytics";
 import SettingsPage from "@/pages/settings";
@@ -31,6 +32,11 @@ function Router() {
       <Route path="/notifications">
         <ProtectedRoute>
           <Notifications />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/notifications/:id/edit">
+        <ProtectedRoute>
+          <EditNotification />
         </ProtectedRoute>
       </Route>
       <Route path="/servers">

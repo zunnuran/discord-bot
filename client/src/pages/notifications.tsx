@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ export default function Notifications() {
   const [filterRepeat, setFilterRepeat] = useState("all");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -27,7 +28,7 @@ export default function Notifications() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/notifications/${id}`),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/notifications/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
@@ -69,7 +70,7 @@ export default function Notifications() {
     return `${scheduled.toLocaleDateString()} at ${timeStr}`;
   };
 
-  const getServerName = (serverId: string) => {
+  const getServerName = (serverId: number) => {
     return servers.find(s => s.id === serverId)?.name || `Server ${serverId}`;
   };
 
@@ -245,14 +246,20 @@ export default function Notifications() {
                         </p>
                         <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 space-x-4">
                           <span>Next: {formatNextScheduled(notification.nextScheduled)}</span>
-                          <span>Created: {new Date(notification.createdAt).toLocaleDateString()}</span>
+                          <span>Created: {notification.createdAt ? new Date(notification.createdAt).toLocaleDateString() : 'N/A'}</span>
                           {notification.timezone && (
                             <span>Timezone: {notification.timezone}</span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center space-x-2 ml-4">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 w-8 p-0"
+                          onClick={() => navigate(`/notifications/${notification.id}/edit`)}
+                          data-testid={`button-edit-${notification.id}`}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button 
@@ -261,6 +268,7 @@ export default function Notifications() {
                           className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                           onClick={() => deleteMutation.mutate(notification.id)}
                           disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-${notification.id}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

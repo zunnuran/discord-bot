@@ -469,6 +469,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ Notification Logs Routes ============
+  app.get("/api/logs/recent", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      const logs = await storage.getRecentLogs(isUserAdmin ? undefined : userId, 20);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching recent logs:", error);
+      res.status(500).json({ message: "Failed to fetch recent logs" });
+    }
+  });
+
   app.get("/api/notifications/:id/logs", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
