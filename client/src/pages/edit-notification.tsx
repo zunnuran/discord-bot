@@ -76,11 +76,12 @@ export default function EditNotification() {
 
   useEffect(() => {
     if (notification) {
-      const scheduleDate = notification.nextScheduled 
-        ? new Date(notification.nextScheduled).toISOString().split("T")[0]
+      const scheduleDateValue = notification.nextScheduled || notification.scheduleDate;
+      const scheduleDate = scheduleDateValue 
+        ? new Date(scheduleDateValue).toISOString().split("T")[0]
         : "";
-      const scheduleTime = notification.nextScheduled
-        ? new Date(notification.nextScheduled).toTimeString().slice(0, 5)
+      const scheduleTime = scheduleDateValue
+        ? new Date(scheduleDateValue).toTimeString().slice(0, 5)
         : "";
       
       form.reset({

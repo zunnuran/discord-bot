@@ -55,7 +55,8 @@ export default function Notifications() {
     }
   };
 
-  const formatNextScheduled = (date: Date | null) => {
+  const formatNextScheduled = (nextScheduled: Date | null, scheduleDate?: Date | null) => {
+    const date = nextScheduled || scheduleDate;
     if (!date) return "Not scheduled";
     
     const now = new Date();
@@ -245,7 +246,7 @@ export default function Notifications() {
                           {notification.message}
                         </p>
                         <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 space-x-4">
-                          <span>Next: {formatNextScheduled(notification.nextScheduled)}</span>
+                          <span>Next: {formatNextScheduled(notification.nextScheduled, notification.scheduleDate)}</span>
                           <span>Created: {notification.createdAt ? new Date(notification.createdAt).toLocaleDateString() : 'N/A'}</span>
                           {notification.timezone && (
                             <span>Timezone: {notification.timezone}</span>
