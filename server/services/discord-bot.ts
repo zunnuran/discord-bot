@@ -212,13 +212,15 @@ class DiscordBotService {
   private async sendNotification(notification: NotificationWithRelations): Promise<void> {
     try {
       if (!notification.channel?.discordId) {
-        await this.logNotificationResult(notification.id, "failed", "Channel not found");
+        console.warn(`Notification ${notification.id}: Channel data not available, skipping`);
+        await this.logNotificationResult(notification.id, "failed", "Channel not found in database");
         return;
       }
 
       const channel = await this.client.channels.fetch(notification.channel.discordId);
       
       if (!channel || !("send" in channel)) {
+        console.warn(`Notification ${notification.id}: Channel not accessible on Discord`);
         await this.logNotificationResult(notification.id, "failed", "Channel not accessible");
         return;
       }
