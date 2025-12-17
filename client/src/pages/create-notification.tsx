@@ -79,9 +79,15 @@ export default function CreateNotification() {
     mutationFn: (data: z.infer<typeof formSchema>) => {
       const scheduleDateTime = new Date(`${data.scheduleDate}T${data.scheduleTime}`);
       return apiRequest("POST", "/api/notifications", {
-        ...data,
+        serverId: parseInt(data.serverId, 10),
+        channelId: parseInt(data.channelId, 10),
+        message: data.message,
         scheduleDate: scheduleDateTime.toISOString(),
-        endDate: data.endDate ? new Date(data.endDate).toISOString() : undefined,
+        repeatType: data.repeatType,
+        endDate: data.endDate ? new Date(data.endDate).toISOString() : null,
+        timezone: data.timezone,
+        mentions: data.mentions,
+        embeds: data.embeds,
       });
     },
     onSuccess: () => {
@@ -152,7 +158,7 @@ export default function CreateNotification() {
                           </FormControl>
                           <SelectContent>
                             {servers.map((server) => (
-                              <SelectItem key={server.id} value={server.id}>
+                              <SelectItem key={server.id} value={String(server.id)}>
                                 {server.name} ({server.memberCount?.toLocaleString()} members)
                               </SelectItem>
                             ))}
@@ -177,7 +183,7 @@ export default function CreateNotification() {
                           </FormControl>
                           <SelectContent>
                             {channels.map((channel) => (
-                              <SelectItem key={channel.id} value={channel.id}>
+                              <SelectItem key={channel.id} value={String(channel.id)}>
                                 # {channel.name}
                               </SelectItem>
                             ))}
@@ -272,10 +278,15 @@ export default function CreateNotification() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="UTC">UTC</SelectItem>
-                            <SelectItem value="EST">EST (UTC-5)</SelectItem>
-                            <SelectItem value="PST">PST (UTC-8)</SelectItem>
-                            <SelectItem value="GMT">GMT (UTC+0)</SelectItem>
+                            <SelectItem value="UTC">UTC (UTC+0)</SelectItem>
+                            <SelectItem value="Asia/Karachi">PKT (UTC+5)</SelectItem>
+                            <SelectItem value="Asia/Kolkata">IST (UTC+5:30)</SelectItem>
+                            <SelectItem value="Asia/Dubai">GST (UTC+4)</SelectItem>
+                            <SelectItem value="Europe/London">GMT (UTC+0)</SelectItem>
+                            <SelectItem value="America/New_York">EST (UTC-5)</SelectItem>
+                            <SelectItem value="America/Los_Angeles">PST (UTC-8)</SelectItem>
+                            <SelectItem value="Asia/Tokyo">JST (UTC+9)</SelectItem>
+                            <SelectItem value="Australia/Sydney">AEST (UTC+10)</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
