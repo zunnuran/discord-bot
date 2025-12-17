@@ -112,7 +112,12 @@ export default function Servers() {
               <p className="text-gray-600 dark:text-gray-300 mt-2">Manage your connected Discord servers and channels</p>
             </div>
             <Button className="discord-primary discord-primary-hover text-white" onClick={() => {
-              window.open('https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=8&scope=bot', '_blank');
+              const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+              if (!clientId || clientId === 'YOUR_BOT_ID') {
+                alert('Discord Application ID not configured. Please add VITE_DISCORD_CLIENT_ID in Settings.');
+                return;
+              }
+              window.open(`https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=2147485696&scope=bot`, '_blank');
             }}>
               <Server className="mr-2 h-4 w-4" />
               Add Server
