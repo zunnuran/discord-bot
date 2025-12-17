@@ -1,97 +1,274 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  pgTable,
+  timestamp,
+  varchar,
+  text,
+  integer,
+  boolean,
+} from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Session storage table for connect-pg-simple
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// Users with role-based access
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  discordId: text("discord_id").notNull().unique(),
-  username: text("username").notNull(),
-  discriminator: text("discriminator").notNull(),
-  avatar: text("avatar"),
-  accessToken: text("access_token").notNull(),
-  refreshToken: text("refresh_token").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  password: varchar("password", { length: 255 }).notNull(),
+  firstName: varchar("first_name", { length: 100 }),
+  lastName: varchar("last_name", { length: 100 }),
+  email: varchar("email", { length: 200 }),
+  role: varchar("role", { length: 50 }).notNull().default("user"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Discord Servers
 export const discordServers = pgTable("discord_servers", {
-  id: varchar("id").primaryKey(),
-  name: text("name").notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  discordId: varchar("discord_id", { length: 100 }).notNull().unique(),
+  name: varchar("name", { length: 200 }).notNull(),
   icon: text("icon"),
   memberCount: integer("member_count").default(0),
   isConnected: boolean("is_connected").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Discord Channels
 export const discordChannels = pgTable("discord_channels", {
-  id: varchar("id").primaryKey(),
-  serverId: varchar("server_id").notNull(),
-  name: text("name").notNull(),
-  type: text("type").notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  discordId: varchar("discord_id", { length: 100 }).notNull().unique(),
+  serverId: integer("server_id").references(() => discordServers.id).notNull(),
+  name: varchar("name", { length: 200 }).notNull(),
+  type: varchar("type", { length: 50 }).notNull().default("text"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Scheduled Notifications
 export const notifications = pgTable("notifications", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(),
-  serverId: varchar("server_id").notNull(),
-  channelId: varchar("channel_id").notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  serverId: integer("server_id").references(() => discordServers.id).notNull(),
+  channelId: integer("channel_id").references(() => discordChannels.id).notNull(),
+  title: varchar("title", { length: 200 }),
   message: text("message").notNull(),
   scheduleDate: timestamp("schedule_date").notNull(),
-  repeatType: text("repeat_type").notNull(), // 'once', 'daily', 'weekly', 'monthly'
+  repeatType: varchar("repeat_type", { length: 50 }).notNull().default("once"),
   endDate: timestamp("end_date"),
   isActive: boolean("is_active").default(true),
-  timezone: text("timezone").default("UTC"),
+  timezone: varchar("timezone", { length: 50 }).default("UTC"),
   mentions: boolean("mentions").default(false),
   embeds: boolean("embeds").default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
   lastSent: timestamp("last_sent"),
   nextScheduled: timestamp("next_scheduled"),
 });
 
+// Notification Logs
 export const notificationLogs = pgTable("notification_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  notificationId: varchar("notification_id").notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  notificationId: integer("notification_id").references(() => notifications.id).notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
-  status: text("status").notNull(), // 'success', 'failed', 'pending'
+  status: varchar("status", { length: 50 }).notNull(),
   error: text("error"),
 });
 
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
+// Bot Settings (global settings for the Discord bot)
+export const botSettings = pgTable("bot_settings", {
+  id: integer("id").primaryKey().default(1),
+  botToken: text("bot_token"),
+  defaultTimezone: varchar("default_timezone", { length: 50 }).default("UTC"),
+  maxMessagesPerMinute: integer("max_messages_per_minute").default(10),
+  enableAnalytics: boolean("enable_analytics").default(true),
+  autoCleanupDays: integer("auto_cleanup_days").default(30),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertDiscordServerSchema = createInsertSchema(discordServers);
+// Relations
+export const discordServersRelations = relations(discordServers, ({ many }) => ({
+  channels: many(discordChannels),
+  notifications: many(notifications),
+}));
 
-export const insertDiscordChannelSchema = createInsertSchema(discordChannels);
+export const discordChannelsRelations = relations(discordChannels, ({ one, many }) => ({
+  server: one(discordServers, {
+    fields: [discordChannels.serverId],
+    references: [discordServers.id],
+  }),
+  notifications: many(notifications),
+}));
 
-export const insertNotificationSchema = createInsertSchema(notifications).omit({
+export const notificationsRelations = relations(notifications, ({ one, many }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+  server: one(discordServers, {
+    fields: [notifications.serverId],
+    references: [discordServers.id],
+  }),
+  channel: one(discordChannels, {
+    fields: [notifications.channelId],
+    references: [discordChannels.id],
+  }),
+  logs: many(notificationLogs),
+}));
+
+export const notificationLogsRelations = relations(notificationLogs, ({ one }) => ({
+  notification: one(notifications, {
+    fields: [notificationLogs.notificationId],
+    references: [notifications.id],
+  }),
+}));
+
+export const usersRelations = relations(users, ({ many }) => ({
+  notifications: many(notifications),
+}));
+
+// Insert schemas
+export const insertUserSchema = createInsertSchema(users, {
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+} as const);
+
+export const insertDiscordServerSchema = createInsertSchema(discordServers, {
+  discordId: z.string().min(1, "Discord ID is required"),
+  name: z.string().min(1, "Server name is required"),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+} as const);
+
+export const insertDiscordChannelSchema = createInsertSchema(discordChannels, {
+  discordId: z.string().min(1, "Discord ID is required"),
+  name: z.string().min(1, "Channel name is required"),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+} as const);
+
+export const insertNotificationSchema = createInsertSchema(notifications, {
+  message: z.string().min(1, "Message is required"),
+  scheduleDate: z.coerce.date(),
+  endDate: z.coerce.date().optional().nullable(),
+}).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
   lastSent: true,
   nextScheduled: true,
-}).extend({
-  scheduleDate: z.string().transform((str) => new Date(str)),
-  endDate: z.string().optional().transform((str) => str ? new Date(str) : undefined),
-});
+} as const);
 
-export const insertNotificationLogSchema = createInsertSchema(notificationLogs).omit({
+export const insertNotificationLogSchema = createInsertSchema(notificationLogs, {
+  status: z.string().min(1, "Status is required"),
+}).omit({
   id: true,
   sentAt: true,
+} as const);
+
+export const insertBotSettingsSchema = createInsertSchema(botSettings).omit({
+  updatedAt: true,
+} as const);
+
+// Login schema
+export const loginSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 // Types
 export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export type InsertUser = {
+  username: string;
+  password: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  role?: string;
+  isActive?: boolean | null;
+};
 
 export type DiscordServer = typeof discordServers.$inferSelect;
-export type InsertDiscordServer = z.infer<typeof insertDiscordServerSchema>;
+export type InsertDiscordServer = {
+  discordId: string;
+  name: string;
+  icon?: string | null;
+  memberCount?: number | null;
+  isConnected?: boolean | null;
+};
 
 export type DiscordChannel = typeof discordChannels.$inferSelect;
-export type InsertDiscordChannel = z.infer<typeof insertDiscordChannelSchema>;
+export type InsertDiscordChannel = {
+  discordId: string;
+  serverId: number;
+  name: string;
+  type?: string;
+};
 
 export type Notification = typeof notifications.$inferSelect;
-export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type InsertNotification = {
+  userId: number;
+  serverId: number;
+  channelId: number;
+  title?: string | null;
+  message: string;
+  scheduleDate: Date;
+  repeatType?: string;
+  endDate?: Date | null;
+  isActive?: boolean | null;
+  timezone?: string | null;
+  mentions?: boolean | null;
+  embeds?: boolean | null;
+};
 
 export type NotificationLog = typeof notificationLogs.$inferSelect;
-export type InsertNotificationLog = z.infer<typeof insertNotificationLogSchema>;
+export type InsertNotificationLog = {
+  notificationId: number;
+  status: string;
+  error?: string | null;
+};
+
+export type BotSettings = typeof botSettings.$inferSelect;
+export type InsertBotSettings = {
+  id?: number;
+  botToken?: string | null;
+  defaultTimezone?: string | null;
+  maxMessagesPerMinute?: number | null;
+  enableAnalytics?: boolean | null;
+  autoCleanupDays?: number | null;
+};
+
+// Extended types with relations
+export type NotificationWithRelations = Notification & {
+  server?: DiscordServer | null;
+  channel?: DiscordChannel | null;
+  user?: User | null;
+};
+
+export type DiscordServerWithChannels = DiscordServer & {
+  channels?: DiscordChannel[];
+};

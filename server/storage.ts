@@ -1,236 +1,478 @@
-import { 
-  type User, type InsertUser,
-  type DiscordServer, type InsertDiscordServer,
-  type DiscordChannel, type InsertDiscordChannel,
-  type Notification, type InsertNotification,
-  type NotificationLog, type InsertNotificationLog
+import {
+  users,
+  discordServers,
+  discordChannels,
+  notifications,
+  notificationLogs,
+  botSettings,
+  type User,
+  type InsertUser,
+  type DiscordServer,
+  type InsertDiscordServer,
+  type DiscordChannel,
+  type InsertDiscordChannel,
+  type Notification,
+  type InsertNotification,
+  type NotificationLog,
+  type InsertNotificationLog,
+  type BotSettings,
+  type InsertBotSettings,
+  type NotificationWithRelations,
+  type DiscordServerWithChannels,
 } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, desc, sql, and, isNull, isNotNull } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 export interface IStorage {
   // User operations
-  getUser(id: string): Promise<User | undefined>;
-  getUserByDiscordId(discordId: string): Promise<User | undefined>;
+  getUsers(): Promise<User[]>;
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
+  validatePassword(user: User, password: string): Promise<boolean>;
 
   // Discord server operations
   getServers(): Promise<DiscordServer[]>;
-  getServer(id: string): Promise<DiscordServer | undefined>;
+  getServer(id: number): Promise<DiscordServer | undefined>;
+  getServerByDiscordId(discordId: string): Promise<DiscordServer | undefined>;
   createServer(server: InsertDiscordServer): Promise<DiscordServer>;
-  updateServer(id: string, server: Partial<InsertDiscordServer>): Promise<DiscordServer | undefined>;
+  updateServer(id: number, server: Partial<InsertDiscordServer>): Promise<DiscordServer | undefined>;
+  deleteServer(id: number): Promise<boolean>;
 
   // Discord channel operations
-  getChannelsByServer(serverId: string): Promise<DiscordChannel[]>;
-  getChannel(id: string): Promise<DiscordChannel | undefined>;
+  getChannels(): Promise<DiscordChannel[]>;
+  getChannelsByServer(serverId: number): Promise<DiscordChannel[]>;
+  getChannel(id: number): Promise<DiscordChannel | undefined>;
+  getChannelByDiscordId(discordId: string): Promise<DiscordChannel | undefined>;
   createChannel(channel: InsertDiscordChannel): Promise<DiscordChannel>;
+  updateChannel(id: number, channel: Partial<InsertDiscordChannel>): Promise<DiscordChannel | undefined>;
+  deleteChannel(id: number): Promise<boolean>;
+  deleteChannelsByServer(serverId: number): Promise<boolean>;
 
   // Notification operations
-  getNotifications(userId: string): Promise<Notification[]>;
-  getNotification(id: string): Promise<Notification | undefined>;
+  getNotifications(userId?: number): Promise<NotificationWithRelations[]>;
+  getNotification(id: number): Promise<NotificationWithRelations | undefined>;
+  getNotificationsByServer(serverId: number): Promise<NotificationWithRelations[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
-  updateNotification(id: string, notification: Partial<Notification>): Promise<Notification | undefined>;
-  deleteNotification(id: string): Promise<boolean>;
-  getActiveNotifications(): Promise<Notification[]>;
+  updateNotification(id: number, notification: Partial<Notification>): Promise<Notification | undefined>;
+  deleteNotification(id: number): Promise<boolean>;
+  getActiveNotifications(): Promise<NotificationWithRelations[]>;
+  getDueNotifications(): Promise<NotificationWithRelations[]>;
 
   // Notification log operations
   createNotificationLog(log: InsertNotificationLog): Promise<NotificationLog>;
-  getNotificationLogs(notificationId: string): Promise<NotificationLog[]>;
+  getNotificationLogs(notificationId: number): Promise<NotificationLog[]>;
+
+  // Bot settings operations
+  getBotSettings(): Promise<BotSettings | undefined>;
+  updateBotSettings(settings: Partial<InsertBotSettings>): Promise<BotSettings>;
 
   // Statistics
-  getStats(userId: string): Promise<{
+  getStats(userId?: number): Promise<{
     activeNotifications: number;
     connectedServers: number;
     messagesSent: number;
     successRate: number;
   }>;
+
+  // Seed default data
+  seedDefaultData(): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User> = new Map();
-  private servers: Map<string, DiscordServer> = new Map();
-  private channels: Map<string, DiscordChannel> = new Map();
-  private notifications: Map<string, Notification> = new Map();
-  private notificationLogs: Map<string, NotificationLog> = new Map();
-
-  constructor() {
-    // Initialize with some sample data for development
-    this.initializeSampleData();
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(users.username);
   }
 
-  private initializeSampleData() {
-    // Sample servers
-    const servers = [
-      { id: "server1", name: "Gaming Server", icon: null, memberCount: 1247, isConnected: true },
-      { id: "server2", name: "Dev Team", icon: null, memberCount: 23, isConnected: true },
-      { id: "server3", name: "Community Hub", icon: null, memberCount: 892, isConnected: true },
-    ];
-    
-    servers.forEach(server => this.servers.set(server.id, server));
-
-    // Sample channels
-    const channels = [
-      { id: "general", serverId: "server1", name: "general", type: "text" },
-      { id: "announcements", serverId: "server1", name: "announcements", type: "text" },
-      { id: "events", serverId: "server1", name: "events", type: "text" },
-      { id: "dev-general", serverId: "server2", name: "general", type: "text" },
-      { id: "dev-announcements", serverId: "server2", name: "announcements", type: "text" },
-      { id: "community-general", serverId: "server3", name: "general", type: "text" },
-      { id: "community-events", serverId: "server3", name: "events", type: "text" },
-    ];
-    
-    channels.forEach(channel => this.channels.set(channel.id, channel));
-  }
-
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByDiscordId(discordId: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.discordId === discordId);
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { 
-      ...insertUser, 
-      id,
-      avatar: insertUser.avatar || null,
-      createdAt: new Date()
-    };
-    this.users.set(id, user);
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
 
-  async updateUser(id: string, updateData: Partial<InsertUser>): Promise<User | undefined> {
-    const user = this.users.get(id);
-    if (!user) return undefined;
-    
-    const updatedUser = { ...user, ...updateData };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
+  async createUser(userData: InsertUser): Promise<User> {
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const [user] = await db
+      .insert(users)
+      .values({ ...userData, password: hashedPassword })
+      .returning();
+    return user;
+  }
+
+  async updateUser(id: number, userData: Partial<InsertUser>): Promise<User | undefined> {
+    const updateData: any = { ...userData, updatedAt: new Date() };
+    if (userData.password) {
+      updateData.password = await bcrypt.hash(userData.password, 10);
+    }
+    const [updated] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async validatePassword(user: User, password: string): Promise<boolean> {
+    return await bcrypt.compare(password, user.password);
+  }
+
+  // Discord server operations
   async getServers(): Promise<DiscordServer[]> {
-    return Array.from(this.servers.values());
+    return await db.select().from(discordServers).orderBy(discordServers.name);
   }
 
-  async getServer(id: string): Promise<DiscordServer | undefined> {
-    return this.servers.get(id);
+  async getServer(id: number): Promise<DiscordServer | undefined> {
+    const [server] = await db.select().from(discordServers).where(eq(discordServers.id, id));
+    return server;
+  }
+
+  async getServerByDiscordId(discordId: string): Promise<DiscordServer | undefined> {
+    const [server] = await db.select().from(discordServers).where(eq(discordServers.discordId, discordId));
+    return server;
   }
 
   async createServer(server: InsertDiscordServer): Promise<DiscordServer> {
-    const newServer: DiscordServer = {
-      ...server,
-      icon: server.icon || null,
-      memberCount: server.memberCount || null,
-      isConnected: server.isConnected || null,
-    };
-    this.servers.set(server.id, newServer);
+    const [newServer] = await db.insert(discordServers).values(server).returning();
     return newServer;
   }
 
-  async updateServer(id: string, updateData: Partial<InsertDiscordServer>): Promise<DiscordServer | undefined> {
-    const server = this.servers.get(id);
-    if (!server) return undefined;
-    
-    const updatedServer = { ...server, ...updateData };
-    this.servers.set(id, updatedServer);
-    return updatedServer;
+  async updateServer(id: number, server: Partial<InsertDiscordServer>): Promise<DiscordServer | undefined> {
+    const [updated] = await db
+      .update(discordServers)
+      .set({ ...server, updatedAt: new Date() })
+      .where(eq(discordServers.id, id))
+      .returning();
+    return updated;
   }
 
-  async getChannelsByServer(serverId: string): Promise<DiscordChannel[]> {
-    return Array.from(this.channels.values()).filter(channel => channel.serverId === serverId);
+  async deleteServer(id: number): Promise<boolean> {
+    // Delete related channels and notifications first
+    await db.delete(discordChannels).where(eq(discordChannels.serverId, id));
+    const result = await db.delete(discordServers).where(eq(discordServers.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
-  async getChannel(id: string): Promise<DiscordChannel | undefined> {
-    return this.channels.get(id);
+  // Discord channel operations
+  async getChannels(): Promise<DiscordChannel[]> {
+    return await db.select().from(discordChannels).orderBy(discordChannels.name);
   }
 
-  async createChannel(channel: InsertDiscordChannel): Promise<DiscordChannel> {
-    this.channels.set(channel.id, channel);
+  async getChannelsByServer(serverId: number): Promise<DiscordChannel[]> {
+    return await db
+      .select()
+      .from(discordChannels)
+      .where(eq(discordChannels.serverId, serverId))
+      .orderBy(discordChannels.name);
+  }
+
+  async getChannel(id: number): Promise<DiscordChannel | undefined> {
+    const [channel] = await db.select().from(discordChannels).where(eq(discordChannels.id, id));
     return channel;
   }
 
-  async getNotifications(userId: string): Promise<Notification[]> {
-    return Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  async getChannelByDiscordId(discordId: string): Promise<DiscordChannel | undefined> {
+    const [channel] = await db.select().from(discordChannels).where(eq(discordChannels.discordId, discordId));
+    return channel;
   }
 
-  async getNotification(id: string): Promise<Notification | undefined> {
-    return this.notifications.get(id);
+  async createChannel(channel: InsertDiscordChannel): Promise<DiscordChannel> {
+    const [newChannel] = await db.insert(discordChannels).values(channel).returning();
+    return newChannel;
   }
 
-  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
-    const id = randomUUID();
-    const notification: Notification = {
-      ...insertNotification,
-      id,
-      endDate: insertNotification.endDate || null,
-      isActive: insertNotification.isActive || null,
-      timezone: insertNotification.timezone || null,
-      mentions: insertNotification.mentions || null,
-      embeds: insertNotification.embeds || null,
-      createdAt: new Date(),
-      lastSent: null,
-      nextScheduled: insertNotification.scheduleDate,
-    };
-    this.notifications.set(id, notification);
+  async updateChannel(id: number, channel: Partial<InsertDiscordChannel>): Promise<DiscordChannel | undefined> {
+    const [updated] = await db
+      .update(discordChannels)
+      .set({ ...channel, updatedAt: new Date() })
+      .where(eq(discordChannels.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteChannel(id: number): Promise<boolean> {
+    const result = await db.delete(discordChannels).where(eq(discordChannels.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async deleteChannelsByServer(serverId: number): Promise<boolean> {
+    const result = await db.delete(discordChannels).where(eq(discordChannels.serverId, serverId));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Notification operations
+  async getNotifications(userId?: number): Promise<NotificationWithRelations[]> {
+    const baseQuery = db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        serverId: notifications.serverId,
+        channelId: notifications.channelId,
+        title: notifications.title,
+        message: notifications.message,
+        scheduleDate: notifications.scheduleDate,
+        repeatType: notifications.repeatType,
+        endDate: notifications.endDate,
+        isActive: notifications.isActive,
+        timezone: notifications.timezone,
+        mentions: notifications.mentions,
+        embeds: notifications.embeds,
+        createdAt: notifications.createdAt,
+        updatedAt: notifications.updatedAt,
+        lastSent: notifications.lastSent,
+        nextScheduled: notifications.nextScheduled,
+        server: discordServers,
+        channel: discordChannels,
+      })
+      .from(notifications)
+      .leftJoin(discordServers, eq(notifications.serverId, discordServers.id))
+      .leftJoin(discordChannels, eq(notifications.channelId, discordChannels.id))
+      .orderBy(desc(notifications.createdAt));
+
+    if (userId) {
+      return await baseQuery.where(eq(notifications.userId, userId));
+    }
+    return await baseQuery;
+  }
+
+  async getNotification(id: number): Promise<NotificationWithRelations | undefined> {
+    const [notification] = await db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        serverId: notifications.serverId,
+        channelId: notifications.channelId,
+        title: notifications.title,
+        message: notifications.message,
+        scheduleDate: notifications.scheduleDate,
+        repeatType: notifications.repeatType,
+        endDate: notifications.endDate,
+        isActive: notifications.isActive,
+        timezone: notifications.timezone,
+        mentions: notifications.mentions,
+        embeds: notifications.embeds,
+        createdAt: notifications.createdAt,
+        updatedAt: notifications.updatedAt,
+        lastSent: notifications.lastSent,
+        nextScheduled: notifications.nextScheduled,
+        server: discordServers,
+        channel: discordChannels,
+      })
+      .from(notifications)
+      .leftJoin(discordServers, eq(notifications.serverId, discordServers.id))
+      .leftJoin(discordChannels, eq(notifications.channelId, discordChannels.id))
+      .where(eq(notifications.id, id));
     return notification;
   }
 
-  async updateNotification(id: string, updateData: Partial<Notification>): Promise<Notification | undefined> {
-    const notification = this.notifications.get(id);
-    if (!notification) return undefined;
-    
-    const updatedNotification = { ...notification, ...updateData };
-    this.notifications.set(id, updatedNotification);
-    return updatedNotification;
+  async getNotificationsByServer(serverId: number): Promise<NotificationWithRelations[]> {
+    return await db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        serverId: notifications.serverId,
+        channelId: notifications.channelId,
+        title: notifications.title,
+        message: notifications.message,
+        scheduleDate: notifications.scheduleDate,
+        repeatType: notifications.repeatType,
+        endDate: notifications.endDate,
+        isActive: notifications.isActive,
+        timezone: notifications.timezone,
+        mentions: notifications.mentions,
+        embeds: notifications.embeds,
+        createdAt: notifications.createdAt,
+        updatedAt: notifications.updatedAt,
+        lastSent: notifications.lastSent,
+        nextScheduled: notifications.nextScheduled,
+        server: discordServers,
+        channel: discordChannels,
+      })
+      .from(notifications)
+      .leftJoin(discordServers, eq(notifications.serverId, discordServers.id))
+      .leftJoin(discordChannels, eq(notifications.channelId, discordChannels.id))
+      .where(eq(notifications.serverId, serverId))
+      .orderBy(desc(notifications.createdAt));
   }
 
-  async deleteNotification(id: string): Promise<boolean> {
-    return this.notifications.delete(id);
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db
+      .insert(notifications)
+      .values({
+        ...notification,
+        nextScheduled: notification.scheduleDate,
+      })
+      .returning();
+    return newNotification;
   }
 
-  async getActiveNotifications(): Promise<Notification[]> {
-    return Array.from(this.notifications.values()).filter(n => n.isActive);
+  async updateNotification(id: number, notification: Partial<Notification>): Promise<Notification | undefined> {
+    const [updated] = await db
+      .update(notifications)
+      .set({ ...notification, updatedAt: new Date() })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updated;
   }
 
+  async deleteNotification(id: number): Promise<boolean> {
+    // Delete logs first
+    await db.delete(notificationLogs).where(eq(notificationLogs.notificationId, id));
+    const result = await db.delete(notifications).where(eq(notifications.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async getActiveNotifications(): Promise<NotificationWithRelations[]> {
+    return await db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        serverId: notifications.serverId,
+        channelId: notifications.channelId,
+        title: notifications.title,
+        message: notifications.message,
+        scheduleDate: notifications.scheduleDate,
+        repeatType: notifications.repeatType,
+        endDate: notifications.endDate,
+        isActive: notifications.isActive,
+        timezone: notifications.timezone,
+        mentions: notifications.mentions,
+        embeds: notifications.embeds,
+        createdAt: notifications.createdAt,
+        updatedAt: notifications.updatedAt,
+        lastSent: notifications.lastSent,
+        nextScheduled: notifications.nextScheduled,
+        server: discordServers,
+        channel: discordChannels,
+      })
+      .from(notifications)
+      .leftJoin(discordServers, eq(notifications.serverId, discordServers.id))
+      .leftJoin(discordChannels, eq(notifications.channelId, discordChannels.id))
+      .where(eq(notifications.isActive, true));
+  }
+
+  async getDueNotifications(): Promise<NotificationWithRelations[]> {
+    const now = new Date();
+    return await db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        serverId: notifications.serverId,
+        channelId: notifications.channelId,
+        title: notifications.title,
+        message: notifications.message,
+        scheduleDate: notifications.scheduleDate,
+        repeatType: notifications.repeatType,
+        endDate: notifications.endDate,
+        isActive: notifications.isActive,
+        timezone: notifications.timezone,
+        mentions: notifications.mentions,
+        embeds: notifications.embeds,
+        createdAt: notifications.createdAt,
+        updatedAt: notifications.updatedAt,
+        lastSent: notifications.lastSent,
+        nextScheduled: notifications.nextScheduled,
+        server: discordServers,
+        channel: discordChannels,
+      })
+      .from(notifications)
+      .leftJoin(discordServers, eq(notifications.serverId, discordServers.id))
+      .leftJoin(discordChannels, eq(notifications.channelId, discordChannels.id))
+      .where(
+        and(
+          eq(notifications.isActive, true),
+          sql`${notifications.nextScheduled} <= ${now}`
+        )
+      );
+  }
+
+  // Notification log operations
   async createNotificationLog(log: InsertNotificationLog): Promise<NotificationLog> {
-    const id = randomUUID();
-    const notificationLog: NotificationLog = {
-      ...log,
-      id,
-      error: log.error || null,
-      sentAt: new Date(),
-    };
-    this.notificationLogs.set(id, notificationLog);
-    return notificationLog;
+    const [newLog] = await db.insert(notificationLogs).values(log).returning();
+    return newLog;
   }
 
-  async getNotificationLogs(notificationId: string): Promise<NotificationLog[]> {
-    return Array.from(this.notificationLogs.values())
-      .filter(log => log.notificationId === notificationId)
-      .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+  async getNotificationLogs(notificationId: number): Promise<NotificationLog[]> {
+    return await db
+      .select()
+      .from(notificationLogs)
+      .where(eq(notificationLogs.notificationId, notificationId))
+      .orderBy(desc(notificationLogs.sentAt));
   }
 
-  async getStats(userId: string): Promise<{
+  // Bot settings operations
+  async getBotSettings(): Promise<BotSettings | undefined> {
+    const [settings] = await db.select().from(botSettings).where(eq(botSettings.id, 1));
+    return settings;
+  }
+
+  async updateBotSettings(settings: Partial<InsertBotSettings>): Promise<BotSettings> {
+    const existing = await this.getBotSettings();
+    if (existing) {
+      const [updated] = await db
+        .update(botSettings)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(botSettings.id, 1))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(botSettings)
+        .values({ id: 1, ...settings })
+        .returning();
+      return created;
+    }
+  }
+
+  // Statistics
+  async getStats(userId?: number): Promise<{
     activeNotifications: number;
     connectedServers: number;
     messagesSent: number;
     successRate: number;
   }> {
-    const userNotifications = await this.getNotifications(userId);
-    const activeNotifications = userNotifications.filter(n => n.isActive).length;
-    const connectedServers = Array.from(this.servers.values()).filter(s => s.isConnected).length;
+    // Get active notifications count
+    const activeNotificationsQuery = userId
+      ? db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(notifications)
+          .where(and(eq(notifications.isActive, true), eq(notifications.userId, userId)))
+      : db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(notifications)
+          .where(eq(notifications.isActive, true));
     
-    const allLogs = Array.from(this.notificationLogs.values());
-    const userNotificationIds = userNotifications.map(n => n.id);
-    const userLogs = allLogs.filter(log => userNotificationIds.includes(log.notificationId));
-    
-    const messagesSent = userLogs.length;
-    const successfulMessages = userLogs.filter(log => log.status === 'success').length;
+    const [{ count: activeNotifications }] = await activeNotificationsQuery;
+
+    // Get connected servers count
+    const [{ count: connectedServers }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(discordServers)
+      .where(eq(discordServers.isConnected, true));
+
+    // Get total messages sent
+    const [{ count: messagesSent }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(notificationLogs);
+
+    // Get success rate
+    const [{ count: successfulMessages }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(notificationLogs)
+      .where(eq(notificationLogs.status, "success"));
+
     const successRate = messagesSent > 0 ? (successfulMessages / messagesSent) * 100 : 100;
 
     return {
@@ -240,6 +482,36 @@ export class MemStorage implements IStorage {
       successRate: Math.round(successRate * 10) / 10,
     };
   }
+
+  // Seed default data
+  async seedDefaultData(): Promise<void> {
+    // Check if admin user exists
+    const existingAdmin = await this.getUserByUsername("admin");
+    if (!existingAdmin) {
+      await this.createUser({
+        username: "admin",
+        password: "admin123",
+        firstName: "Admin",
+        lastName: "User",
+        email: "admin@example.com",
+        role: "admin",
+        isActive: true,
+      });
+      console.log("Default admin user created: admin / admin123");
+    }
+
+    // Ensure bot settings exist
+    const existingSettings = await this.getBotSettings();
+    if (!existingSettings) {
+      await this.updateBotSettings({
+        defaultTimezone: "UTC",
+        maxMessagesPerMinute: 10,
+        enableAnalytics: true,
+        autoCleanupDays: 30,
+      });
+      console.log("Default bot settings created");
+    }
+  }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
