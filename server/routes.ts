@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, isAdmin } from "./auth";
+import { discordBot } from "./services/discord-bot";
 import { 
   type InsertUser,
   type InsertDiscordServer,
@@ -489,6 +490,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching notification logs:", error);
       res.status(500).json({ message: "Failed to fetch notification logs" });
+    }
+  });
+
+  // ============ Discord Bot Sync Routes ============
+  app.post("/api/discord/sync", isAdmin, async (req, res) => {
+    try {
+      if (!discordBot.isConnected()) {
+        return res.status(503).json({ message: "Discord bot is not connected" });
+      }
+      
+      await discordBot.syncAllServers();
+      const servers = await storage.getServers();
+      res.json({ 
+        message: "Sync completed successfully", 
+        serversCount: servers.length 
+      });
+    } catch (error) {
+      console.error("Error syncing Discord servers:", error);
+      res.status(500).json({ message: "Failed to sync servers" });
+    }
+  });
+
+  app.get("/api/discord/status", isAuthenticated, async (req, res) => {
+    try {
+      res.json({
+        connected: discordBot.isConnected(),
+        guildCount: discordBot.getGuildCount(),
+      });
+    } catch (error) {
+      console.error("Error getting Discord status:", error);
+      res.status(500).json({ message: "Failed to get Discord status" });
     }
   });
 

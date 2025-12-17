@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { discordBot } from "./services/discord-bot";
 
 const app = express();
 app.use(express.json());
@@ -65,7 +66,27 @@ app.use((req, res, next) => {
     port,
     host: "0.0.0.0",
     reusePort: true,
-  }, () => {
+  }, async () => {
     log(`serving on port ${port}`);
+    
+    // Start Discord bot after server is running
+    try {
+      await discordBot.start();
+    } catch (error) {
+      console.error("Failed to start Discord bot:", error);
+    }
+  });
+
+  // Graceful shutdown
+  process.on("SIGTERM", async () => {
+    log("SIGTERM received, shutting down...");
+    await discordBot.stop();
+    process.exit(0);
+  });
+
+  process.on("SIGINT", async () => {
+    log("SIGINT received, shutting down...");
+    await discordBot.stop();
+    process.exit(0);
   });
 })();
