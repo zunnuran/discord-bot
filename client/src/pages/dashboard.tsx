@@ -29,10 +29,12 @@ export default function Dashboard() {
     successRate: number;
   }>({
     queryKey: ["/api/stats"],
+    refetchInterval: 30000, // Poll every 30 seconds for realtime updates
   });
 
   const { data: recentLogs = [] } = useQuery<NotificationLog[]>({
     queryKey: ["/api/logs/recent"],
+    refetchInterval: 30000, // Poll every 30 seconds for realtime updates
   });
 
   const recentNotifications = notifications.slice(0, 3);

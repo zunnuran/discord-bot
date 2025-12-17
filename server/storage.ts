@@ -487,10 +487,11 @@ export class DatabaseStorage implements IStorage {
       .from(discordServers)
       .where(eq(discordServers.isConnected, true));
 
-    // Get total messages sent
+    // Get total messages sent (only count successful ones)
     const [{ count: messagesSent }] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
-      .from(notificationLogs);
+      .from(notificationLogs)
+      .where(eq(notificationLogs.status, "success"));
 
     // Get success rate
     const [{ count: successfulMessages }] = await db
