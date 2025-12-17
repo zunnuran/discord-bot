@@ -1,3 +1,4 @@
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +15,10 @@ interface NotificationListProps {
 export default function NotificationList({ notifications }: NotificationListProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/notifications/${id}`),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/notifications/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
@@ -43,7 +45,8 @@ export default function NotificationList({ notifications }: NotificationListProp
     }
   };
 
-  const formatNextScheduled = (date: Date | null) => {
+  const formatNextScheduled = (nextScheduled: Date | null, scheduleDate?: Date | null) => {
+    const date = nextScheduled || scheduleDate;
     if (!date) return "Not scheduled";
     
     const now = new Date();
@@ -63,9 +66,11 @@ export default function NotificationList({ notifications }: NotificationListProp
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Recent Notifications</CardTitle>
-          <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
-            View all
-          </Button>
+          <Link href="/notifications">
+            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700" data-testid="button-view-all-notifications">
+              View all
+            </Button>
+          </Link>
         </div>
       </CardHeader>
       <CardContent className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -91,11 +96,17 @@ export default function NotificationList({ notifications }: NotificationListProp
                     {notification.message}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Next: {formatNextScheduled(notification.nextScheduled)}
+                    Next: {formatNextScheduled(notification.nextScheduled, notification.scheduleDate)}
                   </p>
                 </div>
                 <div className="flex items-center space-x-2 ml-4">
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-8 p-0"
+                    onClick={() => navigate(`/notifications/${notification.id}/edit`)}
+                    data-testid={`button-edit-${notification.id}`}
+                  >
                     <Edit className="h-4 w-4" />
                   </Button>
                   <Button 
@@ -104,6 +115,7 @@ export default function NotificationList({ notifications }: NotificationListProp
                     className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                     onClick={() => deleteMutation.mutate(notification.id)}
                     disabled={deleteMutation.isPending}
+                    data-testid={`button-delete-${notification.id}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

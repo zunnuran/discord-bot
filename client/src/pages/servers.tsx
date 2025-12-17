@@ -1,15 +1,25 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Server, Users, Hash, Settings } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ArrowLeft, Server, Users, Hash, Settings, RefreshCw } from "lucide-react";
 import type { DiscordServer, DiscordChannel } from "@shared/schema";
 
 export default function Servers() {
+  const [selectedServer, setSelectedServer] = useState<DiscordServer | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const { data: servers = [] } = useQuery<DiscordServer[]>({
     queryKey: ["/api/servers"],
   });
+
+  const handleOpenSettings = (server: DiscordServer) => {
+    setSelectedServer(server);
+    setIsSettingsOpen(true);
+  };
 
   const ServerCard = ({ server }: { server: DiscordServer }) => {
     const { data: channels = [] } = useQuery<DiscordChannel[]>({
@@ -48,7 +58,12 @@ export default function Servers() {
               ) : (
                 <Badge variant="secondary">Disconnected</Badge>
               )}
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => handleOpenSettings(server)}
+                data-testid={`button-server-settings-${server.id}`}
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </div>
@@ -214,6 +229,77 @@ export default function Servers() {
           )}
         </div>
       </div>
+
+      {/* Server Settings Dialog */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Settings className="h-5 w-5" />
+              <span>Server Settings</span>
+            </DialogTitle>
+            <DialogDescription>
+              Configure settings for {selectedServer?.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedServer && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="w-10 h-10 discord-primary rounded-lg flex items-center justify-center">
+                  <span className="text-white font-semibold">
+                    {selectedServer.name.charAt(0)}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-medium">{selectedServer.name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {selectedServer.memberCount?.toLocaleString()} members
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">Connection Status</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Bot connection to this server</p>
+                  </div>
+                  <Badge className={selectedServer.isConnected 
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+                    : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
+                  }>
+                    {selectedServer.isConnected ? 'Connected' : 'Disconnected'}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">Server ID</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Discord server identifier</p>
+                  </div>
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                    {selectedServer.discordId}
+                  </code>
+                </div>
+              </div>
+
+              <div className="flex space-x-2 pt-4">
+                <Link href={`/create?serverId=${selectedServer.id}`} className="flex-1">
+                  <Button className="w-full discord-primary discord-primary-hover text-white">
+                    Create Notification
+                  </Button>
+                </Link>
+                <Link href={`/servers/${selectedServer.id}`}>
+                  <Button variant="outline">
+                    View Details
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

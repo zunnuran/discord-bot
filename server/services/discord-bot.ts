@@ -74,6 +74,24 @@ class DiscordBotService {
     console.log("Discord bot stopped");
   }
 
+  getStatus(): { isOnline: boolean; botName: string | null; botId: string | null; serverCount: number } {
+    if (!this.isReady || !this.client.user) {
+      return {
+        isOnline: false,
+        botName: null,
+        botId: null,
+        serverCount: 0,
+      };
+    }
+
+    return {
+      isOnline: true,
+      botName: this.client.user.tag,
+      botId: this.client.user.id,
+      serverCount: this.client.guilds.cache.size,
+    };
+  }
+
   async syncAllServers(): Promise<void> {
     if (!this.isReady) {
       console.log("Bot not ready, skipping sync");

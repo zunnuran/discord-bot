@@ -4,11 +4,19 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
+
+interface BotStatus {
+  isOnline: boolean;
+  botName: string | null;
+  botId: string | null;
+  serverCount: number;
+}
 
 const navigation = [
   { name: "Dashboard", icon: BarChart3, href: "/" },
+  { name: "Notifications", icon: Bell, href: "/notifications" },
   { name: "Create Notification", icon: Plus, href: "/create" },
-  { name: "Scheduled Messages", icon: Bell, href: "/notifications" },
   { name: "Servers", icon: Server, href: "/servers" },
   { name: "Analytics", icon: BarChart3, href: "/analytics" },
   { name: "Settings", icon: Settings, href: "/settings" },
@@ -17,6 +25,12 @@ const navigation = [
 export default function Sidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  
+  const { data: botStatus, isLoading: isBotStatusLoading } = useQuery<BotStatus>({
+    queryKey: ["/api/bot/status"],
+    refetchInterval: 10000, // Poll every 10 seconds
+    enabled: !!user, // Only fetch when user is authenticated
+  });
   
   return (
     <div className="w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col">
@@ -72,8 +86,19 @@ export default function Sidebar() {
       <div className="p-4 border-t border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-            <span className="text-sm text-gray-600 dark:text-gray-300">Bot Online</span>
+            {isBotStatusLoading ? (
+              <>
+                <span className="w-3 h-3 rounded-full bg-gray-400 animate-pulse"></span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Loading...</span>
+              </>
+            ) : (
+              <>
+                <span className={`w-3 h-3 rounded-full ${botStatus?.isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  {botStatus?.isOnline ? 'Bot Online' : 'Bot Offline'}
+                </span>
+              </>
+            )}
           </div>
           <Badge variant="secondary" className="text-xs">v2.1.0</Badge>
         </div>

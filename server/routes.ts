@@ -505,6 +505,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ Discord Bot Status Route ============
+  app.get("/api/bot/status", isAuthenticated, async (req, res) => {
+    try {
+      const status = discordBot.getStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching bot status:", error);
+      res.status(500).json({ message: "Failed to fetch bot status" });
+    }
+  });
+
   // ============ Discord Bot Sync Routes ============
   app.post("/api/discord/sync", isAdmin, async (req, res) => {
     try {

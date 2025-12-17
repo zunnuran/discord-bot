@@ -34,6 +34,13 @@ interface BotSettings {
   autoCleanupDays: number | null;
 }
 
+interface BotStatus {
+  isOnline: boolean;
+  botName: string | null;
+  botId: string | null;
+  serverCount: number;
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
   const { toast } = useToast();
@@ -41,6 +48,11 @@ export default function Settings() {
 
   const { data: settings, isLoading } = useQuery<BotSettings>({
     queryKey: ["/api/settings"],
+  });
+
+  const { data: botStatus } = useQuery<BotStatus>({
+    queryKey: ["/api/bot/status"],
+    refetchInterval: 10000, // Poll every 10 seconds
   });
 
   const [localSettings, setLocalSettings] = useState({
@@ -198,6 +210,7 @@ export default function Settings() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="UTC">UTC</SelectItem>
+                          <SelectItem value="UTC+5">UTC+5 (PKT)</SelectItem>
                           <SelectItem value="EST">EST (UTC-5)</SelectItem>
                           <SelectItem value="PST">PST (UTC-8)</SelectItem>
                           <SelectItem value="GMT">GMT (UTC+0)</SelectItem>
@@ -238,16 +251,28 @@ export default function Settings() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                  <div className={`p-4 rounded-lg ${botStatus?.isOnline ? 'bg-green-50 dark:bg-green-900/20' : 'bg-yellow-50 dark:bg-yellow-900/20'}`}>
                     <div className="flex items-center space-x-2 mb-2">
-                      <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300">
-                        Not Connected
+                      <Badge className={botStatus?.isOnline 
+                        ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+                        : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
+                      }>
+                        {botStatus?.isOnline ? 'Connected' : 'Not Connected'}
                       </Badge>
-                      <span className="text-sm font-medium">Bot Status: Offline</span>
+                      <span className="text-sm font-medium">
+                        Bot Status: {botStatus?.isOnline ? 'Online' : 'Offline'}
+                      </span>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Add a Discord bot token to connect your bot
-                    </p>
+                    {botStatus?.isOnline ? (
+                      <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                        <p>Bot Name: <span className="font-medium">{botStatus.botName}</span></p>
+                        <p>Connected Servers: <span className="font-medium">{botStatus.serverCount}</span></p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Discord bot token is configured via environment secrets
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-4">
