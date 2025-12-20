@@ -1,7 +1,19 @@
-import { Client, GatewayIntentBits, Events, ChannelType, type Guild, type TextChannel, type ThreadChannel, type Message } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Events,
+  ChannelType,
+  type Guild,
+  type TextChannel,
+  type ThreadChannel,
+  type Message,
+} from "discord.js";
 import * as cron from "node-cron";
 import { storage } from "../storage";
-import type { NotificationWithRelations, ForwarderWithRelations } from "@shared/schema";
+import type {
+  NotificationWithRelations,
+  ForwarderWithRelations,
+} from "@shared/schema";
 
 class DiscordBotService {
   private client: Client;
@@ -81,7 +93,12 @@ class DiscordBotService {
     console.log("Discord bot stopped");
   }
 
-  getStatus(): { isOnline: boolean; botName: string | null; botId: string | null; serverCount: number } {
+  getStatus(): {
+    isOnline: boolean;
+    botName: string | null;
+    botId: string | null;
+    serverCount: number;
+  } {
     if (!this.isReady || !this.client.user) {
       return {
         isOnline: false,
@@ -107,7 +124,7 @@ class DiscordBotService {
 
     console.log("Syncing all servers...");
     const guilds = Array.from(this.client.guilds.cache.values());
-    
+
     for (const guild of guilds) {
       try {
         await this.syncServer(guild);
@@ -122,14 +139,15 @@ class DiscordBotService {
   async syncServer(guild: Guild): Promise<void> {
     try {
       const fullGuild = await guild.fetch();
-      
+
       let server = await storage.getServerByDiscordId(fullGuild.id);
-      
+
       if (server) {
         server = await storage.updateServer(server.id, {
           name: fullGuild.name,
           icon: fullGuild.iconURL(),
-          memberCount: fullGuild.approximateMemberCount || fullGuild.memberCount,
+          memberCount:
+            fullGuild.approximateMemberCount || fullGuild.memberCount,
           isConnected: true,
         });
       } else {
@@ -137,7 +155,8 @@ class DiscordBotService {
           discordId: fullGuild.id,
           name: fullGuild.name,
           icon: fullGuild.iconURL(),
-          memberCount: fullGuild.approximateMemberCount || fullGuild.memberCount,
+          memberCount:
+            fullGuild.approximateMemberCount || fullGuild.memberCount,
           isConnected: true,
         });
       }
@@ -145,7 +164,7 @@ class DiscordBotService {
       if (server) {
         await this.syncChannels(fullGuild, server.id);
       }
-      
+
       console.log(`Synced server: ${fullGuild.name}`);
     } catch (error) {
       console.error(`Error syncing server ${guild.name}:`, error);
@@ -161,24 +180,34 @@ class DiscordBotService {
 
       for (const channel of channels) {
         if (!channel) continue;
-        
-        if (channel.type === ChannelType.GuildText || 
-            channel.type === ChannelType.GuildAnnouncement) {
+
+        if (
+          channel.type === ChannelType.GuildText ||
+          channel.type === ChannelType.GuildAnnouncement
+        ) {
           syncedChannelIds.add(channel.id);
-          
-          const existingChannel = await storage.getChannelByDiscordId(channel.id);
-          
+
+          const existingChannel = await storage.getChannelByDiscordId(
+            channel.id,
+          );
+
           if (existingChannel) {
             await storage.updateChannel(existingChannel.id, {
               name: channel.name,
-              type: channel.type === ChannelType.GuildAnnouncement ? "announcement" : "text",
+              type:
+                channel.type === ChannelType.GuildAnnouncement
+                  ? "announcement"
+                  : "text",
             });
           } else {
             await storage.createChannel({
               discordId: channel.id,
               serverId: serverId,
               name: channel.name,
-              type: channel.type === ChannelType.GuildAnnouncement ? "announcement" : "text",
+              type:
+                channel.type === ChannelType.GuildAnnouncement
+                  ? "announcement"
+                  : "text",
             });
           }
         }
@@ -206,7 +235,9 @@ class DiscordBotService {
     }
   }
 
-  async syncServerById(serverId: number): Promise<{ success: boolean; message: string }> {
+  async syncServerById(
+    serverId: number,
+  ): Promise<{ success: boolean; message: string }> {
     if (!this.isReady) {
       return { success: false, message: "Discord bot is not connected" };
     }
@@ -245,7 +276,7 @@ class DiscordBotService {
   private async processNotifications(): Promise<void> {
     try {
       const dueNotifications = await storage.getDueNotifications();
-      
+
       if (dueNotifications.length === 0) return;
 
       console.log(`Processing ${dueNotifications.length} due notification(s)`);
@@ -258,26 +289,42 @@ class DiscordBotService {
     }
   }
 
-  private async sendNotification(notification: NotificationWithRelations): Promise<void> {
+  private async sendNotification(
+    notification: NotificationWithRelations,
+  ): Promise<void> {
     try {
       if (!notification.channel?.discordId) {
-        console.warn(`Notification ${notification.id}: Channel data not available, skipping`);
-        await this.logNotificationResult(notification.id, "failed", "Channel not found in database");
+        console.warn(
+          `Notification ${notification.id}: Channel data not available, skipping`,
+        );
+        await this.logNotificationResult(
+          notification.id,
+          "failed",
+          "Channel not found in database",
+        );
         return;
       }
 
-      const channel = await this.client.channels.fetch(notification.channel.discordId);
-      
+      const channel = await this.client.channels.fetch(
+        notification.channel.discordId,
+      );
+
       if (!channel || !("send" in channel)) {
-        console.warn(`Notification ${notification.id}: Channel not accessible on Discord`);
-        await this.logNotificationResult(notification.id, "failed", "Channel not accessible");
+        console.warn(
+          `Notification ${notification.id}: Channel not accessible on Discord`,
+        );
+        await this.logNotificationResult(
+          notification.id,
+          "failed",
+          "Channel not accessible",
+        );
         return;
       }
 
       const textChannel = channel as TextChannel;
-      
+
       let messageContent = notification.message;
-      
+
       if (notification.mentions) {
         messageContent = `@everyone ${messageContent}`;
       }
@@ -288,8 +335,11 @@ class DiscordBotService {
 
       const now = new Date();
       const nextScheduled = this.calculateNextScheduled(notification);
-      
-      if (nextScheduled && (!notification.endDate || nextScheduled <= notification.endDate)) {
+
+      if (
+        nextScheduled &&
+        (!notification.endDate || nextScheduled <= notification.endDate)
+      ) {
         await storage.updateNotification(notification.id, {
           lastSent: now,
           nextScheduled: nextScheduled,
@@ -302,48 +352,56 @@ class DiscordBotService {
         });
       }
 
-      console.log(`Sent notification: ${notification.title || notification.id}`);
+      console.log(
+        `Sent notification: ${notification.title || notification.id}`,
+      );
     } catch (error: any) {
       console.error(`Failed to send notification ${notification.id}:`, error);
-      await this.logNotificationResult(notification.id, "failed", error.message);
+      await this.logNotificationResult(
+        notification.id,
+        "failed",
+        error.message,
+      );
     }
   }
 
-  private calculateNextScheduled(notification: NotificationWithRelations): Date | null {
+  private calculateNextScheduled(
+    notification: NotificationWithRelations,
+  ): Date | null {
     const now = new Date();
     const current = notification.nextScheduled || notification.scheduleDate;
-    
+
     switch (notification.repeatType) {
       case "once":
         return null;
-      
+
       case "daily": {
         const next = new Date(current);
         next.setDate(next.getDate() + 1);
         return next;
       }
-      
+
       case "weekly": {
         const next = new Date(current);
         next.setDate(next.getDate() + 7);
         return next;
       }
-      
+
       case "monthly": {
         const next = new Date(current);
         next.setMonth(next.getMonth() + 1);
         return next;
       }
-      
+
       default:
         return null;
     }
   }
 
   private async logNotificationResult(
-    notificationId: number, 
-    status: "success" | "failed", 
-    error?: string
+    notificationId: number,
+    status: "success" | "failed",
+    error?: string,
   ): Promise<void> {
     try {
       await storage.createNotificationLog({
@@ -384,25 +442,25 @@ class DiscordBotService {
   }
 
   // ============ Message Forwarder Methods ============
-  
+
   async loadForwarders(): Promise<void> {
     try {
       const activeForwarders = await storage.getActiveForwarders();
       this.forwarderCache.clear();
-      
+
       for (const forwarder of activeForwarders) {
         if (!forwarder.sourceChannel?.discordId) continue;
-        
+
         // Use Discord channel ID as key, with optional thread suffix
         const channelDiscordId = forwarder.sourceChannel.discordId;
-        const key = forwarder.sourceThreadId 
+        const key = forwarder.sourceThreadId
           ? `thread:${forwarder.sourceThreadId}`
           : `channel:${channelDiscordId}`;
-        
+
         const existing = this.forwarderCache.get(key) || [];
         existing.push(forwarder);
         this.forwarderCache.set(key, existing);
-        
+
         // Also add by channel for non-thread-specific forwarders
         if (!forwarder.sourceThreadId) {
           const channelKey = `channel:${channelDiscordId}`;
@@ -411,16 +469,18 @@ class DiscordBotService {
           }
         }
       }
-      
+
       console.log(`Loaded ${activeForwarders.length} active forwarder(s)`);
-      console.log(`[Forwarder] Cache keys: ${Array.from(this.forwarderCache.keys()).join(', ')}`);
+      console.log(
+        `[Forwarder] Cache keys: ${Array.from(this.forwarderCache.keys()).join(", ")}`,
+      );
     } catch (error) {
       console.error("Failed to load forwarders:", error);
     }
   }
 
   reloadForwarders(): void {
-    this.loadForwarders().catch(err => {
+    this.loadForwarders().catch((err) => {
       console.error("Failed to reload forwarders:", err);
     });
   }
@@ -428,56 +488,75 @@ class DiscordBotService {
   private async handleMessageForwarding(message: Message): Promise<void> {
     // Ignore bot messages (including our own)
     if (message.author.bot) return;
-    
+
     // Only process guild messages
     if (!message.guild) return;
-    
+
     // Debug logging
-    console.log(`[Forwarder] Message received in channel ${message.channel.id} from ${message.author.tag}: "${message.content.substring(0, 50)}..."`);
-    console.log(`[Forwarder] Cache has ${this.forwarderCache.size} entries: ${Array.from(this.forwarderCache.keys()).join(', ')}`);
-    
+    console.log(
+      `[Forwarder] Message received in channel ${message.channel.id} from ${message.author.tag}: "${message.content.substring(0, 50)}..."`,
+    );
+    console.log(
+      `[Forwarder] Cache has ${this.forwarderCache.size} entries: ${Array.from(this.forwarderCache.keys()).join(", ")}`,
+    );
+
     // Get forwarders for this channel/thread
     let forwarders: ForwarderWithRelations[] = [];
-    
+
     if (message.channel.isThread()) {
       // Check for thread-specific forwarders first
       const threadKey = `thread:${message.channel.id}`;
       forwarders = [...(this.forwarderCache.get(threadKey) || [])];
-      
+
       // Also check parent channel forwarders (they should also match thread messages)
       if (message.channel.parentId) {
         const parentKey = `channel:${message.channel.parentId}`;
-        forwarders = [...forwarders, ...(this.forwarderCache.get(parentKey) || [])];
+        forwarders = [
+          ...forwarders,
+          ...(this.forwarderCache.get(parentKey) || []),
+        ];
       }
     } else {
       // Regular channel message
       const channelKey = `channel:${message.channel.id}`;
       forwarders = this.forwarderCache.get(channelKey) || [];
     }
-    
+
     if (forwarders.length === 0) {
       console.log(`[Forwarder] No forwarders found for this channel/thread`);
       return;
     }
-    
-    console.log(`[Forwarder] Found ${forwarders.length} forwarder(s) for this channel`);
+
+    console.log(
+      `[Forwarder] Found ${forwarders.length} forwarder(s) for this channel`,
+    );
     const messageContent = message.content.toLowerCase();
-    
+
     for (const forwarder of forwarders) {
       try {
         // Check if message matches any keyword (case-insensitive)
-        const matchedKeyword = forwarder.keywords.find(keyword => {
+        const matchedKeyword = forwarder.keywords.find((keyword) => {
           const lowerKeyword = keyword.toLowerCase().trim();
           if (forwarder.matchType === "exact") {
             // Exact match - normalize punctuation and check for word match
             // Remove leading/trailing punctuation and check if keyword appears as distinct token
-            const normalizedMessage = messageContent.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-            const normalizedKeyword = lowerKeyword.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-            const messageTokens = normalizedMessage.split(' ');
-            const keywordTokens = normalizedKeyword.split(' ');
-            
+            const normalizedMessage = messageContent
+              .replace(/[^\w\s]/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+            const normalizedKeyword = lowerKeyword
+              .replace(/[^\w\s]/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+            const messageTokens = normalizedMessage.split(" ");
+            const keywordTokens = normalizedKeyword.split(" ");
+
             // Check if all keyword tokens appear in sequence in message
-            for (let i = 0; i <= messageTokens.length - keywordTokens.length; i++) {
+            for (
+              let i = 0;
+              i <= messageTokens.length - keywordTokens.length;
+              i++
+            ) {
               let match = true;
               for (let j = 0; j < keywordTokens.length; j++) {
                 if (messageTokens[i + j] !== keywordTokens[j]) {
@@ -492,39 +571,52 @@ class DiscordBotService {
           // Contains match - keyword appears anywhere in the message
           return messageContent.includes(lowerKeyword);
         });
-        
+
         if (!matchedKeyword) continue;
-        
+
         // Forward the message
         await this.forwardMessage(message, forwarder, matchedKeyword);
       } catch (error: any) {
-        console.error(`Failed to forward message for forwarder ${forwarder.id}:`, error);
-        await this.logForwarderResult(forwarder.id, message.content, null, "failed", error.message);
+        console.error(
+          `Failed to forward message for forwarder ${forwarder.id}:`,
+          error,
+        );
+        await this.logForwarderResult(
+          forwarder.id,
+          message.content,
+          null,
+          "failed",
+          error.message,
+        );
       }
     }
   }
 
   private async forwardMessage(
-    message: Message, 
-    forwarder: ForwarderWithRelations, 
-    matchedKeyword: string
+    message: Message,
+    forwarder: ForwarderWithRelations,
+    matchedKeyword: string,
   ): Promise<void> {
     if (!forwarder.destinationChannel?.discordId) {
       throw new Error("Destination channel not found");
     }
 
     let targetChannel: TextChannel | ThreadChannel;
-    
+
     if (forwarder.destinationThreadId) {
       // Send to specific thread
-      const thread = await this.client.channels.fetch(forwarder.destinationThreadId);
+      const thread = await this.client.channels.fetch(
+        forwarder.destinationThreadId,
+      );
       if (!thread || !thread.isThread()) {
         throw new Error("Destination thread not found or not a thread");
       }
       targetChannel = thread;
     } else {
       // Send to channel
-      const channel = await this.client.channels.fetch(forwarder.destinationChannel.discordId);
+      const channel = await this.client.channels.fetch(
+        forwarder.destinationChannel.discordId,
+      );
       if (!channel || !("send" in channel)) {
         throw new Error("Destination channel not accessible");
       }
@@ -533,18 +625,24 @@ class DiscordBotService {
 
     // Build forwarded message
     const forwardedContent = [
-      `**Forwarded Message** (matched: \`${matchedKeyword}\`)`,
-      `From: ${message.author.tag} in #${message.channel.isThread() ? message.channel.name : (message.channel as TextChannel).name}`,
-      `---`,
+      `**Forwarded Message**`,
+      `-----`,
       message.content,
     ].join("\n");
 
     await targetChannel.send(forwardedContent);
-    
+
     // Log success
-    await this.logForwarderResult(forwarder.id, message.content, matchedKeyword, "success");
-    
-    console.log(`Forwarded message matching "${matchedKeyword}" to ${targetChannel.name}`);
+    await this.logForwarderResult(
+      forwarder.id,
+      message.content,
+      matchedKeyword,
+      "success",
+    );
+
+    console.log(
+      `Forwarded message matching "${matchedKeyword}" to ${targetChannel.name}`,
+    );
   }
 
   private async logForwarderResult(
@@ -552,7 +650,7 @@ class DiscordBotService {
     originalMessage: string,
     matchedKeyword: string | null,
     status: "success" | "failed",
-    error?: string
+    error?: string,
   ): Promise<void> {
     try {
       await storage.createForwarderLog({
@@ -567,16 +665,18 @@ class DiscordBotService {
     }
   }
 
-  async getThreadsForServer(discordServerId: string): Promise<Array<{ id: string; name: string; parentId: string }>> {
+  async getThreadsForServer(
+    discordServerId: string,
+  ): Promise<Array<{ id: string; name: string; parentId: string }>> {
     if (!this.isReady) return [];
-    
+
     try {
       const guild = await this.client.guilds.fetch(discordServerId);
       if (!guild) return [];
-      
+
       const activeThreads = await guild.channels.fetchActiveThreads();
-      
-      return activeThreads.threads.map(thread => ({
+
+      return activeThreads.threads.map((thread) => ({
         id: thread.id,
         name: thread.name,
         parentId: thread.parentId || "",
