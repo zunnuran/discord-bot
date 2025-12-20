@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Edit, Forward, Power, Search } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit, Forward, Power, Search, FileText } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ForwarderWithRelations, DiscordServer, DiscordChannel } from "@shared/schema";
@@ -19,10 +20,21 @@ interface ChannelsWithThreads {
   threads: { id: string; name: string; parentId: string }[];
 }
 
+interface ForwarderLog {
+  id: number;
+  forwarderId: number;
+  originalMessage: string | null;
+  matchedKeyword: string | null;
+  status: string;
+  error: string | null;
+  forwardedAt: string;
+}
+
 export default function Forwarders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingForwarder, setEditingForwarder] = useState<ForwarderWithRelations | null>(null);
+  const [viewingLogsForwarder, setViewingLogsForwarder] = useState<ForwarderWithRelations | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -198,6 +210,15 @@ export default function Forwarders() {
                         onCheckedChange={() => toggleMutation.mutate(forwarder.id)}
                         data-testid={`switch-toggle-${forwarder.id}`}
                       />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setViewingLogsForwarder(forwarder)}
+                        data-testid={`button-logs-${forwarder.id}`}
+                        title="View logs"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
                       <Dialog>
                         <DialogTrigger asChild>
                           <Button
@@ -242,7 +263,74 @@ export default function Forwarders() {
           </CardContent>
         </Card>
       </div>
+
+      {viewingLogsForwarder && (
+        <Dialog open={!!viewingLogsForwarder} onOpenChange={(open) => !open && setViewingLogsForwarder(null)}>
+          <LogsDialog 
+            forwarder={viewingLogsForwarder} 
+            onClose={() => setViewingLogsForwarder(null)} 
+          />
+        </Dialog>
+      )}
     </div>
+  );
+}
+
+function LogsDialog({ forwarder, onClose }: { forwarder: ForwarderWithRelations; onClose: () => void }) {
+  const { data: logs = [], isLoading } = useQuery<ForwarderLog[]>({
+    queryKey: ["/api/forwarders", forwarder.id, "logs"],
+    enabled: !!forwarder.id,
+  });
+
+  return (
+    <DialogContent className="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>Forwarding Logs - {forwarder.name}</DialogTitle>
+      </DialogHeader>
+      <div className="py-4">
+        {isLoading ? (
+          <div className="text-center text-gray-500">Loading logs...</div>
+        ) : logs.length === 0 ? (
+          <div className="text-center text-gray-500 py-8">
+            No forwarding logs yet. Messages matching your keywords will appear here when forwarded.
+          </div>
+        ) : (
+          <ScrollArea className="h-[400px]">
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div key={log.id} className="border rounded-lg p-3 text-sm">
+                  <div className="flex justify-between items-start mb-2">
+                    <Badge variant={log.status === "success" ? "default" : "destructive"}>
+                      {log.status}
+                    </Badge>
+                    <span className="text-xs text-gray-500">
+                      {new Date(log.forwardedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-gray-700 dark:text-gray-300 mb-1">
+                    <span className="font-medium">Original:</span> {log.originalMessage?.substring(0, 200) || "N/A"}
+                    {(log.originalMessage?.length || 0) > 200 && "..."}
+                  </div>
+                  {log.matchedKeyword && (
+                    <div className="text-xs text-green-600 dark:text-green-400">
+                      Matched: "{log.matchedKeyword}"
+                    </div>
+                  )}
+                  {log.error && (
+                    <div className="text-red-500 text-xs mt-1">
+                      Error: {log.error}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
