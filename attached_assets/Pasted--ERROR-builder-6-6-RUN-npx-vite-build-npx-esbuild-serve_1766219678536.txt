@@ -1,0 +1,35 @@
+ => ERROR [builder 6/6] RUN npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=cjs --outfile=dist/index.cjs                                                                                                             15.0s
+------
+ > [builder 6/6] RUN npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=cjs --outfile=dist/index.cjs:
+3.043 vite v5.4.19 building for production...
+4.049 transforming...
+4.241 Browserslist: browsers data (caniuse-lite) is 14 months old. Please run:
+4.241   npx update-browserslist-db@latest
+4.241   Why you should do it regularly: https://github.com/browserslist/update-db#readme
+12.94 ✓ 1747 modules transformed.
+13.64 rendering chunks...
+13.68 computing gzip size...
+13.72 ../dist/public/index.html                   0.64 kB │ gzip:   0.39 kB
+13.72 ../dist/public/assets/index-C5gZ56G9.css   66.72 kB │ gzip:  11.64 kB
+13.72 ../dist/public/assets/index-CVnyabWe.js   567.00 kB │ gzip: 162.71 kB
+13.72
+13.72 (!) Some chunks are larger than 500 kB after minification. Consider:
+13.72 - Using dynamic import() to code-split the application
+13.72 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+13.72 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+13.72 ✓ built in 10.61s
+14.86 ▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+14.86
+14.86     server/vite.ts:71:32:
+14.86       71 │   const distPath = path.resolve(import.meta.dirname, "public");
+14.86          ╵                                 ~~~~~~~~~~~
+14.86
+14.86   You need to set the output format to "esm" for "import.meta" to work correctly.
+14.86
+14.86 ✘ [ERROR] Top-level await is currently not supported with the "cjs" output format
+14.86
+14.86     vite.config.ts:13:10:
+14.86       13 │           await import("@replit/vite-plugin-cartographer").then((m...
+14.86          ╵           ~~~~~
+14.86
+14.86 ▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
