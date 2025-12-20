@@ -14,8 +14,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application (frontend with Vite, backend with esbuild to CommonJS)
+RUN npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=cjs --outfile=dist/index.cjs
 
 # ==========================
 # Production stage
@@ -49,4 +49,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Start the application
 # Run migrations first, then start Node.js server
-CMD ["sh", "-c", "npx drizzle-kit push && node --experimental-specifier-resolution=node dist/index.js"]
+CMD ["sh", "-c", "npx drizzle-kit push && node dist/index.cjs"]
