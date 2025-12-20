@@ -49,4 +49,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Start the application
 # Run migrations first, then start Node.js server
-CMD ["sh", "-c", "npx drizzle-kit push && node dist/index.cjs"]
+CMD ["sh", "-c", "npx drizzle-kit push && node dist/index.js"]
