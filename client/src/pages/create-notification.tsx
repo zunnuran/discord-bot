@@ -16,12 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Clock, Send, ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Calendar, Clock, Send, ArrowLeft, RefreshCw, Check, ChevronsUpDown } from "lucide-react";
 import type { DiscordServer, DiscordChannel } from "@shared/schema";
 
 const formSchema = z.object({
@@ -40,6 +43,7 @@ const formSchema = z.object({
 
 export default function CreateNotification() {
   const [selectedServerId, setSelectedServerId] = useState<string>("");
+  const [channelOpen, setChannelOpen] = useState(false);
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(useSearch());
   const { toast } = useToast();
@@ -74,6 +78,23 @@ export default function CreateNotification() {
     queryKey: ["/api/servers", selectedServerId, "channels"],
     enabled: !!selectedServerId,
   });
+
+  const syncMutation = useMutation({
+    mutationFn: (serverId: string) => apiRequest("POST", `/api/servers/${serverId}/sync`),
+    onSuccess: (_, serverId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servers", serverId, "channels"] });
+      toast({ title: "Synced", description: "Channels refreshed from Discord" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to sync channels", variant: "destructive" });
+    },
+  });
+
+  const handleSyncChannels = () => {
+    if (selectedServerId) {
+      syncMutation.mutate(selectedServerId);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: z.infer<typeof formSchema>) => {
@@ -150,20 +171,33 @@ export default function CreateNotification() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Discord Server *</FormLabel>
-                        <Select onValueChange={handleServerChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a server..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {servers.map((server) => (
-                              <SelectItem key={server.id} value={String(server.id)}>
-                                {server.name} ({server.memberCount?.toLocaleString()} members)
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex gap-1">
+                          <Select onValueChange={handleServerChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Select a server..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {servers.map((server) => (
+                                <SelectItem key={server.id} value={String(server.id)}>
+                                  {server.name} ({server.memberCount?.toLocaleString()} members)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={handleSyncChannels}
+                            disabled={!selectedServerId || syncMutation.isPending}
+                            title="Refresh channels from Discord"
+                            data-testid="button-sync-channels"
+                          >
+                            <RefreshCw className={cn("h-4 w-4", syncMutation.isPending && "animate-spin")} />
+                          </Button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -175,20 +209,50 @@ export default function CreateNotification() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Channel *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={!selectedServerId}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a channel..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {channels.map((channel) => (
-                              <SelectItem key={channel.id} value={String(channel.id)}>
-                                # {channel.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover open={channelOpen} onOpenChange={setChannelOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={channelOpen}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                                disabled={!selectedServerId}
+                              >
+                                {field.value
+                                  ? `#${channels.find(c => String(c.id) === field.value)?.name || ""}`
+                                  : "Select a channel..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[250px] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search channels..." />
+                              <CommandList>
+                                <CommandEmpty>No channel found.</CommandEmpty>
+                                <CommandGroup>
+                                  {channels.map((channel) => (
+                                    <CommandItem
+                                      key={channel.id}
+                                      value={channel.name}
+                                      onSelect={() => {
+                                        field.onChange(String(channel.id));
+                                        setChannelOpen(false);
+                                      }}
+                                    >
+                                      <Check className={cn("mr-2 h-4 w-4", field.value === String(channel.id) ? "opacity-100" : "opacity-0")} />
+                                      #{channel.name}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}

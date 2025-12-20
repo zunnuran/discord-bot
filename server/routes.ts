@@ -253,6 +253,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync server channels from Discord
+  app.post("/api/servers/:serverId/sync", isAuthenticated, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const result = await discordBot.syncServerById(serverId);
+      if (!result.success) {
+        return res.status(400).json({ message: result.message });
+      }
+      res.json({ message: result.message });
+    } catch (error) {
+      console.error("Error syncing server:", error);
+      res.status(500).json({ message: "Failed to sync server" });
+    }
+  });
+
   // ============ Channel Routes ============
   app.get("/api/servers/:serverId/channels", isAuthenticated, async (req, res) => {
     try {

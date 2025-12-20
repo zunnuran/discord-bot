@@ -206,6 +206,30 @@ class DiscordBotService {
     }
   }
 
+  async syncServerById(serverId: number): Promise<{ success: boolean; message: string }> {
+    if (!this.isReady) {
+      return { success: false, message: "Discord bot is not connected" };
+    }
+
+    try {
+      const server = await storage.getServer(serverId);
+      if (!server) {
+        return { success: false, message: "Server not found" };
+      }
+
+      const guild = this.client.guilds.cache.get(server.discordId);
+      if (!guild) {
+        return { success: false, message: "Server not accessible by bot" };
+      }
+
+      await this.syncServer(guild);
+      return { success: true, message: `Synced channels for ${server.name}` };
+    } catch (error: any) {
+      console.error(`Error syncing server ${serverId}:`, error);
+      return { success: false, message: error.message || "Sync failed" };
+    }
+  }
+
   private startScheduler(): void {
     if (this.schedulerTask) {
       this.schedulerTask.stop();

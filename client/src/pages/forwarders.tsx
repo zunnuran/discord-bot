@@ -9,10 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Edit, Forward, Power, Search, FileText } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { ArrowLeft, Plus, Trash2, Edit, Forward, Power, Search, FileText, RefreshCw, Check, ChevronsUpDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type { ForwarderWithRelations, DiscordServer, DiscordChannel } from "@shared/schema";
 
 interface ChannelsWithThreads {
@@ -355,17 +358,45 @@ function ForwarderDialog({
   const [keywords, setKeywords] = useState<string>(forwarder?.keywords?.join(", ") || "");
   const [matchType, setMatchType] = useState<string>(forwarder?.matchType || "contains");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sourceChannelOpen, setSourceChannelOpen] = useState(false);
+  const [sourceThreadOpen, setSourceThreadOpen] = useState(false);
+  const [destChannelOpen, setDestChannelOpen] = useState(false);
+  const [destThreadOpen, setDestThreadOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const { data: sourceChannelsData } = useQuery<ChannelsWithThreads>({
+  const { data: sourceChannelsData, refetch: refetchSourceChannels } = useQuery<ChannelsWithThreads>({
     queryKey: ["/api/servers", sourceServerId, "channels-with-threads"],
     enabled: !!sourceServerId,
   });
 
-  const { data: destChannelsData } = useQuery<ChannelsWithThreads>({
+  const { data: destChannelsData, refetch: refetchDestChannels } = useQuery<ChannelsWithThreads>({
     queryKey: ["/api/servers", destinationServerId, "channels-with-threads"],
     enabled: !!destinationServerId,
   });
+
+  const syncMutation = useMutation({
+    mutationFn: (serverId: string) => apiRequest("POST", `/api/servers/${serverId}/sync`),
+    onSuccess: (_, serverId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servers", serverId, "channels-with-threads"] });
+      toast({ title: "Synced", description: "Channels refreshed from Discord" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to sync channels", variant: "destructive" });
+    },
+  });
+
+  const handleSyncSource = () => {
+    if (sourceServerId) {
+      syncMutation.mutate(sourceServerId);
+    }
+  };
+
+  const handleSyncDest = () => {
+    if (destinationServerId) {
+      syncMutation.mutate(destinationServerId);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!name || !sourceServerId || !sourceChannelId || !destinationServerId || !destinationChannelId || !keywords.trim()) {
@@ -409,8 +440,13 @@ function ForwarderDialog({
     }
   };
 
+  const selectedSourceChannel = sourceChannelsData?.channels.find(c => c.id.toString() === sourceChannelId);
+  const sourceThreads = sourceChannelsData?.threads?.filter(t => t.parentId === selectedSourceChannel?.discordId) || [];
+  const selectedDestChannel = destChannelsData?.channels.find(c => c.id.toString() === destinationChannelId);
+  const destThreads = destChannelsData?.threads?.filter(t => t.parentId === selectedDestChannel?.discordId) || [];
+
   return (
-    <DialogContent className="max-w-lg">
+    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{forwarder ? "Edit Forwarder" : "Create Forwarder"}</DialogTitle>
       </DialogHeader>
@@ -429,102 +465,258 @@ function ForwarderDialog({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Source Server</Label>
-            <Select value={sourceServerId} onValueChange={(v) => { setSourceServerId(v); setSourceChannelId(""); setSourceThreadId(""); }}>
-              <SelectTrigger data-testid="select-source-server">
-                <SelectValue placeholder="Select server" />
-              </SelectTrigger>
-              <SelectContent>
-                {servers.filter(s => s.isConnected).map(server => (
-                  <SelectItem key={server.id} value={server.id.toString()}>{server.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Source Channel</Label>
-            <Select value={sourceChannelId} onValueChange={setSourceChannelId} disabled={!sourceServerId}>
-              <SelectTrigger data-testid="select-source-channel">
-                <SelectValue placeholder="Select channel" />
-              </SelectTrigger>
-              <SelectContent>
-                {sourceChannelsData?.channels.map(channel => (
-                  <SelectItem key={channel.id} value={channel.id.toString()}>#{channel.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {(() => {
-          const selectedChannel = sourceChannelsData?.channels.find(c => c.id.toString() === sourceChannelId);
-          const filteredThreads = sourceChannelsData?.threads?.filter(t => t.parentId === selectedChannel?.discordId) || [];
-          return filteredThreads.length > 0 && (
-            <div>
-              <Label>Source Thread (Optional)</Label>
-              <Select value={sourceThreadId || "none"} onValueChange={(v) => setSourceThreadId(v === "none" ? "" : v)}>
-                <SelectTrigger data-testid="select-source-thread">
-                  <SelectValue placeholder="Select thread (optional)" />
+            <div className="flex gap-1">
+              <Select value={sourceServerId} onValueChange={(v) => { setSourceServerId(v); setSourceChannelId(""); setSourceThreadId(""); }}>
+                <SelectTrigger data-testid="select-source-server" className="flex-1">
+                  <SelectValue placeholder="Select server" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No thread</SelectItem>
-                  {filteredThreads.map(thread => (
-                    <SelectItem key={thread.id} value={thread.id}>{thread.name}</SelectItem>
+                  {servers.filter(s => s.isConnected).map(server => (
+                    <SelectItem key={server.id} value={server.id.toString()}>{server.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleSyncSource}
+                disabled={!sourceServerId || syncMutation.isPending}
+                title="Refresh channels from Discord"
+                data-testid="button-sync-source"
+              >
+                <RefreshCw className={cn("h-4 w-4", syncMutation.isPending && "animate-spin")} />
+              </Button>
             </div>
-          );
-        })()}
+          </div>
+          <div>
+            <Label>Source Channel</Label>
+            <Popover open={sourceChannelOpen} onOpenChange={setSourceChannelOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={sourceChannelOpen}
+                  className="w-full justify-between"
+                  disabled={!sourceServerId}
+                  data-testid="select-source-channel"
+                >
+                  {sourceChannelId
+                    ? `#${sourceChannelsData?.channels.find(c => c.id.toString() === sourceChannelId)?.name || ""}`
+                    : "Select channel..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[250px] p-0">
+                <Command>
+                  <CommandInput placeholder="Search channels..." />
+                  <CommandList>
+                    <CommandEmpty>No channel found.</CommandEmpty>
+                    <CommandGroup>
+                      {sourceChannelsData?.channels.map((channel) => (
+                        <CommandItem
+                          key={channel.id}
+                          value={channel.name}
+                          onSelect={() => {
+                            setSourceChannelId(channel.id.toString());
+                            setSourceThreadId("");
+                            setSourceChannelOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", sourceChannelId === channel.id.toString() ? "opacity-100" : "opacity-0")} />
+                          #{channel.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        {sourceThreads.length > 0 && (
+          <div>
+            <Label>Source Thread (Optional)</Label>
+            <Popover open={sourceThreadOpen} onOpenChange={setSourceThreadOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={sourceThreadOpen}
+                  className="w-full justify-between"
+                  data-testid="select-source-thread"
+                >
+                  {sourceThreadId
+                    ? sourceThreads.find(t => t.id === sourceThreadId)?.name || "No thread"
+                    : "No thread (monitor channel)"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[250px] p-0">
+                <Command>
+                  <CommandInput placeholder="Search threads..." />
+                  <CommandList>
+                    <CommandEmpty>No thread found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="none"
+                        onSelect={() => {
+                          setSourceThreadId("");
+                          setSourceThreadOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", !sourceThreadId ? "opacity-100" : "opacity-0")} />
+                        No thread (monitor channel)
+                      </CommandItem>
+                      {sourceThreads.map((thread) => (
+                        <CommandItem
+                          key={thread.id}
+                          value={thread.name}
+                          onSelect={() => {
+                            setSourceThreadId(thread.id);
+                            setSourceThreadOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", sourceThreadId === thread.id ? "opacity-100" : "opacity-0")} />
+                          {thread.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Destination Server</Label>
-            <Select value={destinationServerId} onValueChange={(v) => { setDestinationServerId(v); setDestinationChannelId(""); setDestinationThreadId(""); }}>
-              <SelectTrigger data-testid="select-dest-server">
-                <SelectValue placeholder="Select server" />
-              </SelectTrigger>
-              <SelectContent>
-                {servers.filter(s => s.isConnected).map(server => (
-                  <SelectItem key={server.id} value={server.id.toString()}>{server.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Destination Channel</Label>
-            <Select value={destinationChannelId} onValueChange={setDestinationChannelId} disabled={!destinationServerId}>
-              <SelectTrigger data-testid="select-dest-channel">
-                <SelectValue placeholder="Select channel" />
-              </SelectTrigger>
-              <SelectContent>
-                {destChannelsData?.channels.map(channel => (
-                  <SelectItem key={channel.id} value={channel.id.toString()}>#{channel.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {(() => {
-          const selectedChannel = destChannelsData?.channels.find(c => c.id.toString() === destinationChannelId);
-          const filteredThreads = destChannelsData?.threads?.filter(t => t.parentId === selectedChannel?.discordId) || [];
-          return filteredThreads.length > 0 && (
-            <div>
-              <Label>Destination Thread (Optional)</Label>
-              <Select value={destinationThreadId || "none"} onValueChange={(v) => setDestinationThreadId(v === "none" ? "" : v)}>
-                <SelectTrigger data-testid="select-dest-thread">
-                  <SelectValue placeholder="Select thread (optional)" />
+            <div className="flex gap-1">
+              <Select value={destinationServerId} onValueChange={(v) => { setDestinationServerId(v); setDestinationChannelId(""); setDestinationThreadId(""); }}>
+                <SelectTrigger data-testid="select-dest-server" className="flex-1">
+                  <SelectValue placeholder="Select server" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No thread</SelectItem>
-                  {filteredThreads.map(thread => (
-                    <SelectItem key={thread.id} value={thread.id}>{thread.name}</SelectItem>
+                  {servers.filter(s => s.isConnected).map(server => (
+                    <SelectItem key={server.id} value={server.id.toString()}>{server.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleSyncDest}
+                disabled={!destinationServerId || syncMutation.isPending}
+                title="Refresh channels from Discord"
+                data-testid="button-sync-dest"
+              >
+                <RefreshCw className={cn("h-4 w-4", syncMutation.isPending && "animate-spin")} />
+              </Button>
             </div>
-          );
-        })()}
+          </div>
+          <div>
+            <Label>Destination Channel</Label>
+            <Popover open={destChannelOpen} onOpenChange={setDestChannelOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={destChannelOpen}
+                  className="w-full justify-between"
+                  disabled={!destinationServerId}
+                  data-testid="select-dest-channel"
+                >
+                  {destinationChannelId
+                    ? `#${destChannelsData?.channels.find(c => c.id.toString() === destinationChannelId)?.name || ""}`
+                    : "Select channel..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[250px] p-0">
+                <Command>
+                  <CommandInput placeholder="Search channels..." />
+                  <CommandList>
+                    <CommandEmpty>No channel found.</CommandEmpty>
+                    <CommandGroup>
+                      {destChannelsData?.channels.map((channel) => (
+                        <CommandItem
+                          key={channel.id}
+                          value={channel.name}
+                          onSelect={() => {
+                            setDestinationChannelId(channel.id.toString());
+                            setDestinationThreadId("");
+                            setDestChannelOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", destinationChannelId === channel.id.toString() ? "opacity-100" : "opacity-0")} />
+                          #{channel.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        {destThreads.length > 0 && (
+          <div>
+            <Label>Destination Thread (Optional)</Label>
+            <Popover open={destThreadOpen} onOpenChange={setDestThreadOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={destThreadOpen}
+                  className="w-full justify-between"
+                  data-testid="select-dest-thread"
+                >
+                  {destinationThreadId
+                    ? destThreads.find(t => t.id === destinationThreadId)?.name || "No thread"
+                    : "No thread (send to channel)"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[250px] p-0">
+                <Command>
+                  <CommandInput placeholder="Search threads..." />
+                  <CommandList>
+                    <CommandEmpty>No thread found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="none"
+                        onSelect={() => {
+                          setDestinationThreadId("");
+                          setDestThreadOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", !destinationThreadId ? "opacity-100" : "opacity-0")} />
+                        No thread (send to channel)
+                      </CommandItem>
+                      {destThreads.map((thread) => (
+                        <CommandItem
+                          key={thread.id}
+                          value={thread.name}
+                          onSelect={() => {
+                            setDestinationThreadId(thread.id);
+                            setDestThreadOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", destinationThreadId === thread.id ? "opacity-100" : "opacity-0")} />
+                          {thread.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
 
         <div>
           <Label htmlFor="keywords">Keywords (comma-separated)</Label>
