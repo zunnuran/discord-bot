@@ -389,6 +389,7 @@ class DiscordBotService {
       }
       
       console.log(`Loaded ${activeForwarders.length} active forwarder(s)`);
+      console.log(`[Forwarder] Cache keys: ${Array.from(this.forwarderCache.keys()).join(', ')}`);
     } catch (error) {
       console.error("Failed to load forwarders:", error);
     }
@@ -406,6 +407,10 @@ class DiscordBotService {
     
     // Only process guild messages
     if (!message.guild) return;
+    
+    // Debug logging
+    console.log(`[Forwarder] Message received in channel ${message.channel.id} from ${message.author.tag}: "${message.content.substring(0, 50)}..."`);
+    console.log(`[Forwarder] Cache has ${this.forwarderCache.size} entries: ${Array.from(this.forwarderCache.keys()).join(', ')}`);
     
     // Get forwarders for this channel/thread
     let forwarders: ForwarderWithRelations[] = [];
@@ -426,8 +431,12 @@ class DiscordBotService {
       forwarders = this.forwarderCache.get(channelKey) || [];
     }
     
-    if (forwarders.length === 0) return;
+    if (forwarders.length === 0) {
+      console.log(`[Forwarder] No forwarders found for this channel/thread`);
+      return;
+    }
     
+    console.log(`[Forwarder] Found ${forwarders.length} forwarder(s) for this channel`);
     const messageContent = message.content.toLowerCase();
     
     for (const forwarder of forwarders) {
