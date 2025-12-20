@@ -105,7 +105,28 @@ Preferred communication style: Simple, everyday language.
 - **Mock Data**: In-memory storage for development without database setup
 - **Error Handling**: Runtime error overlay for development debugging
 
+### Message Forwarder System
+- **Purpose**: Monitor specific Discord channels for keyword triggers and forward matching messages
+- **Database Schema**: forwarders table with source/destination channels, keywords, match type
+- **Logging**: forwarderLogs table tracks all forwarded messages with status
+- **Keyword Matching**: Case-insensitive matching with two modes:
+  - **Contains**: Keyword appears anywhere in message
+  - **Exact**: Keyword appears as distinct word (with punctuation normalization)
+- **Bot Message Filtering**: Automatically ignores messages from bots (including self)
+- **Thread Support**: Can monitor and forward to specific Discord threads
+- **Cache System**: In-memory cache using channel:discordId and thread:threadId keys
+- **Validation**: Backend validates server connectivity and channel ownership
+
 ## Recent Changes: Latest modifications with dates
+
+### December 20, 2025 - Message Forwarder Module
+- **Forwarder Schema**: Added forwarders and forwarderLogs tables with full relations
+- **Storage CRUD**: Implemented getForwarders, createForwarder, updateForwarder, deleteForwarder
+- **API Endpoints**: Full REST API at /api/forwarders/* with authentication and ownership checks
+- **Discord Bot Handler**: messageCreate event with keyword matching, bot filtering, and message forwarding
+- **Forwarders UI**: Management page with list view, create/edit dialog, toggle, and delete
+- **Backend Validation**: Server connectivity and channel ownership verification
+- **Cache Management**: Automatic cache reload on forwarder create/update/delete/toggle
 
 ### January 30, 2025 - Discord Bot Application Completed
 - **Complete Multi-Page Application**: Implemented all navigation pages with full functionality

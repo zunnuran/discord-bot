@@ -1,18 +1,20 @@
-import { Client, GatewayIntentBits, Events, ChannelType, type Guild, type TextChannel } from "discord.js";
+import { Client, GatewayIntentBits, Events, ChannelType, type Guild, type TextChannel, type ThreadChannel, type Message } from "discord.js";
 import * as cron from "node-cron";
 import { storage } from "../storage";
-import type { NotificationWithRelations } from "@shared/schema";
+import type { NotificationWithRelations, ForwarderWithRelations } from "@shared/schema";
 
 class DiscordBotService {
   private client: Client;
   private isReady: boolean = false;
   private schedulerTask: ReturnType<typeof cron.schedule> | null = null;
+  private forwarderCache: Map<string, ForwarderWithRelations[]> = new Map();
 
   constructor() {
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
       ],
     });
 
@@ -24,7 +26,12 @@ class DiscordBotService {
       console.log(`Discord bot logged in as ${c.user.tag}`);
       this.isReady = true;
       await this.syncAllServers();
+      await this.loadForwarders();
       this.startScheduler();
+    });
+
+    this.client.on(Events.MessageCreate, async (message) => {
+      await this.handleMessageForwarding(message);
     });
 
     this.client.on(Events.GuildCreate, async (guild) => {
@@ -350,6 +357,201 @@ class DiscordBotService {
 
   getGuildCount(): number {
     return this.client.guilds.cache.size;
+  }
+
+  // ============ Message Forwarder Methods ============
+  
+  async loadForwarders(): Promise<void> {
+    try {
+      const activeForwarders = await storage.getActiveForwarders();
+      this.forwarderCache.clear();
+      
+      for (const forwarder of activeForwarders) {
+        if (!forwarder.sourceChannel?.discordId) continue;
+        
+        // Use Discord channel ID as key, with optional thread suffix
+        const channelDiscordId = forwarder.sourceChannel.discordId;
+        const key = forwarder.sourceThreadId 
+          ? `thread:${forwarder.sourceThreadId}`
+          : `channel:${channelDiscordId}`;
+        
+        const existing = this.forwarderCache.get(key) || [];
+        existing.push(forwarder);
+        this.forwarderCache.set(key, existing);
+        
+        // Also add by channel for non-thread-specific forwarders
+        if (!forwarder.sourceThreadId) {
+          const channelKey = `channel:${channelDiscordId}`;
+          if (!this.forwarderCache.has(channelKey)) {
+            this.forwarderCache.set(channelKey, []);
+          }
+        }
+      }
+      
+      console.log(`Loaded ${activeForwarders.length} active forwarder(s)`);
+    } catch (error) {
+      console.error("Failed to load forwarders:", error);
+    }
+  }
+
+  reloadForwarders(): void {
+    this.loadForwarders().catch(err => {
+      console.error("Failed to reload forwarders:", err);
+    });
+  }
+
+  private async handleMessageForwarding(message: Message): Promise<void> {
+    // Ignore bot messages (including our own)
+    if (message.author.bot) return;
+    
+    // Only process guild messages
+    if (!message.guild) return;
+    
+    // Get forwarders for this channel/thread
+    let forwarders: ForwarderWithRelations[] = [];
+    
+    if (message.channel.isThread()) {
+      // Check for thread-specific forwarders first
+      const threadKey = `thread:${message.channel.id}`;
+      forwarders = [...(this.forwarderCache.get(threadKey) || [])];
+      
+      // Also check parent channel forwarders (they should also match thread messages)
+      if (message.channel.parentId) {
+        const parentKey = `channel:${message.channel.parentId}`;
+        forwarders = [...forwarders, ...(this.forwarderCache.get(parentKey) || [])];
+      }
+    } else {
+      // Regular channel message
+      const channelKey = `channel:${message.channel.id}`;
+      forwarders = this.forwarderCache.get(channelKey) || [];
+    }
+    
+    if (forwarders.length === 0) return;
+    
+    const messageContent = message.content.toLowerCase();
+    
+    for (const forwarder of forwarders) {
+      try {
+        // Check if message matches any keyword (case-insensitive)
+        const matchedKeyword = forwarder.keywords.find(keyword => {
+          const lowerKeyword = keyword.toLowerCase().trim();
+          if (forwarder.matchType === "exact") {
+            // Exact match - normalize punctuation and check for word match
+            // Remove leading/trailing punctuation and check if keyword appears as distinct token
+            const normalizedMessage = messageContent.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+            const normalizedKeyword = lowerKeyword.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+            const messageTokens = normalizedMessage.split(' ');
+            const keywordTokens = normalizedKeyword.split(' ');
+            
+            // Check if all keyword tokens appear in sequence in message
+            for (let i = 0; i <= messageTokens.length - keywordTokens.length; i++) {
+              let match = true;
+              for (let j = 0; j < keywordTokens.length; j++) {
+                if (messageTokens[i + j] !== keywordTokens[j]) {
+                  match = false;
+                  break;
+                }
+              }
+              if (match) return true;
+            }
+            return false;
+          }
+          // Contains match - keyword appears anywhere in the message
+          return messageContent.includes(lowerKeyword);
+        });
+        
+        if (!matchedKeyword) continue;
+        
+        // Forward the message
+        await this.forwardMessage(message, forwarder, matchedKeyword);
+      } catch (error: any) {
+        console.error(`Failed to forward message for forwarder ${forwarder.id}:`, error);
+        await this.logForwarderResult(forwarder.id, message.content, null, "failed", error.message);
+      }
+    }
+  }
+
+  private async forwardMessage(
+    message: Message, 
+    forwarder: ForwarderWithRelations, 
+    matchedKeyword: string
+  ): Promise<void> {
+    if (!forwarder.destinationChannel?.discordId) {
+      throw new Error("Destination channel not found");
+    }
+
+    let targetChannel: TextChannel | ThreadChannel;
+    
+    if (forwarder.destinationThreadId) {
+      // Send to specific thread
+      const thread = await this.client.channels.fetch(forwarder.destinationThreadId);
+      if (!thread || !thread.isThread()) {
+        throw new Error("Destination thread not found or not a thread");
+      }
+      targetChannel = thread;
+    } else {
+      // Send to channel
+      const channel = await this.client.channels.fetch(forwarder.destinationChannel.discordId);
+      if (!channel || !("send" in channel)) {
+        throw new Error("Destination channel not accessible");
+      }
+      targetChannel = channel as TextChannel;
+    }
+
+    // Build forwarded message
+    const forwardedContent = [
+      `**Forwarded Message** (matched: \`${matchedKeyword}\`)`,
+      `From: ${message.author.tag} in #${message.channel.isThread() ? message.channel.name : (message.channel as TextChannel).name}`,
+      `---`,
+      message.content,
+    ].join("\n");
+
+    await targetChannel.send(forwardedContent);
+    
+    // Log success
+    await this.logForwarderResult(forwarder.id, message.content, matchedKeyword, "success");
+    
+    console.log(`Forwarded message matching "${matchedKeyword}" to ${targetChannel.name}`);
+  }
+
+  private async logForwarderResult(
+    forwarderId: number,
+    originalMessage: string,
+    matchedKeyword: string | null,
+    status: "success" | "failed",
+    error?: string
+  ): Promise<void> {
+    try {
+      await storage.createForwarderLog({
+        forwarderId,
+        originalMessage: originalMessage.substring(0, 500), // Limit message length
+        matchedKeyword,
+        status,
+        error: error || null,
+      });
+    } catch (err) {
+      console.error("Failed to log forwarder result:", err);
+    }
+  }
+
+  async getThreadsForServer(discordServerId: string): Promise<Array<{ id: string; name: string; parentId: string }>> {
+    if (!this.isReady) return [];
+    
+    try {
+      const guild = await this.client.guilds.fetch(discordServerId);
+      if (!guild) return [];
+      
+      const activeThreads = await guild.channels.fetchActiveThreads();
+      
+      return activeThreads.threads.map(thread => ({
+        id: thread.id,
+        name: thread.name,
+        parentId: thread.parentId || "",
+      }));
+    } catch (error) {
+      console.error("Failed to fetch threads:", error);
+      return [];
+    }
   }
 }
 

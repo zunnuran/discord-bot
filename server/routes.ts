@@ -8,6 +8,7 @@ import {
   type InsertDiscordServer,
   type InsertDiscordChannel,
   type InsertNotification,
+  type InsertForwarder,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -50,6 +51,20 @@ const notificationSchema = z.object({
   timezone: z.string().optional(),
   mentions: z.boolean().optional(),
   embeds: z.boolean().optional(),
+});
+
+const forwarderSchema = z.object({
+  userId: z.number(),
+  name: z.string().min(1, "Name is required"),
+  sourceServerId: z.number(),
+  sourceChannelId: z.number(),
+  sourceThreadId: z.string().optional().nullable(),
+  destinationServerId: z.number(),
+  destinationChannelId: z.number(),
+  destinationThreadId: z.string().optional().nullable(),
+  keywords: z.array(z.string()).min(1, "At least one keyword is required"),
+  matchType: z.enum(["contains", "exact"]).optional(),
+  isActive: z.boolean().optional(),
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -544,6 +559,250 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting Discord status:", error);
       res.status(500).json({ message: "Failed to get Discord status" });
+    }
+  });
+
+  // ============ Forwarder Routes ============
+  app.get("/api/forwarders", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      
+      const forwarders = isUserAdmin
+        ? await storage.getForwarders()
+        : await storage.getForwarders(userId);
+      res.json(forwarders);
+    } catch (error) {
+      console.error("Error fetching forwarders:", error);
+      res.status(500).json({ message: "Failed to fetch forwarders" });
+    }
+  });
+
+  app.get("/api/forwarders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const forwarder = await storage.getForwarder(id);
+      
+      if (!forwarder) {
+        return res.status(404).json({ message: "Forwarder not found" });
+      }
+      
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      if (!isUserAdmin && forwarder.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(forwarder);
+    } catch (error) {
+      console.error("Error fetching forwarder:", error);
+      res.status(500).json({ message: "Failed to fetch forwarder" });
+    }
+  });
+
+  app.post("/api/forwarders", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id;
+      const data = forwarderSchema.parse({ ...req.body, userId }) as InsertForwarder;
+      
+      // Validate servers are connected
+      const sourceServer = await storage.getServer(data.sourceServerId);
+      const destServer = await storage.getServer(data.destinationServerId);
+      
+      if (!sourceServer?.isConnected) {
+        return res.status(400).json({ message: "Source server is not connected" });
+      }
+      if (!destServer?.isConnected) {
+        return res.status(400).json({ message: "Destination server is not connected" });
+      }
+      
+      // Validate channels belong to specified servers
+      const sourceChannel = await storage.getChannel(data.sourceChannelId);
+      const destChannel = await storage.getChannel(data.destinationChannelId);
+      
+      if (!sourceChannel || sourceChannel.serverId !== data.sourceServerId) {
+        return res.status(400).json({ message: "Source channel does not belong to source server" });
+      }
+      if (!destChannel || destChannel.serverId !== data.destinationServerId) {
+        return res.status(400).json({ message: "Destination channel does not belong to destination server" });
+      }
+      
+      const forwarder = await storage.createForwarder(data);
+      
+      // Reload forwarder cache in bot
+      discordBot.reloadForwarders();
+      
+      res.status(201).json(forwarder);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+      } else {
+        console.error("Error creating forwarder:", error);
+        res.status(500).json({ message: "Failed to create forwarder" });
+      }
+    }
+  });
+
+  app.put("/api/forwarders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getForwarder(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Forwarder not found" });
+      }
+      
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      if (!isUserAdmin && existing.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const data = forwarderSchema.partial().parse(req.body);
+      
+      // Validate servers are connected if being updated
+      const sourceServerId = data.sourceServerId || existing.sourceServerId;
+      const destServerId = data.destinationServerId || existing.destinationServerId;
+      const sourceChannelId = data.sourceChannelId || existing.sourceChannelId;
+      const destChannelId = data.destinationChannelId || existing.destinationChannelId;
+      
+      const sourceServer = await storage.getServer(sourceServerId);
+      const destServer = await storage.getServer(destServerId);
+      
+      if (!sourceServer?.isConnected) {
+        return res.status(400).json({ message: "Source server is not connected" });
+      }
+      if (!destServer?.isConnected) {
+        return res.status(400).json({ message: "Destination server is not connected" });
+      }
+      
+      // Validate channels belong to specified servers
+      const sourceChannel = await storage.getChannel(sourceChannelId);
+      const destChannel = await storage.getChannel(destChannelId);
+      
+      if (!sourceChannel || sourceChannel.serverId !== sourceServerId) {
+        return res.status(400).json({ message: "Source channel does not belong to source server" });
+      }
+      if (!destChannel || destChannel.serverId !== destServerId) {
+        return res.status(400).json({ message: "Destination channel does not belong to destination server" });
+      }
+      
+      const forwarder = await storage.updateForwarder(id, data);
+      
+      // Reload forwarder cache in bot
+      discordBot.reloadForwarders();
+      
+      res.json(forwarder);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+      } else {
+        console.error("Error updating forwarder:", error);
+        res.status(500).json({ message: "Failed to update forwarder" });
+      }
+    }
+  });
+
+  app.delete("/api/forwarders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getForwarder(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Forwarder not found" });
+      }
+      
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      if (!isUserAdmin && existing.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      await storage.deleteForwarder(id);
+      
+      // Reload forwarder cache in bot
+      discordBot.reloadForwarders();
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting forwarder:", error);
+      res.status(500).json({ message: "Failed to delete forwarder" });
+    }
+  });
+
+  app.patch("/api/forwarders/:id/toggle", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getForwarder(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Forwarder not found" });
+      }
+      
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      if (!isUserAdmin && existing.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const forwarder = await storage.updateForwarder(id, { isActive: !existing.isActive });
+      
+      // Reload forwarder cache in bot
+      discordBot.reloadForwarders();
+      
+      res.json(forwarder);
+    } catch (error) {
+      console.error("Error toggling forwarder:", error);
+      res.status(500).json({ message: "Failed to toggle forwarder" });
+    }
+  });
+
+  app.get("/api/forwarders/:id/logs", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getForwarder(id);
+      
+      if (!existing) {
+        return res.status(404).json({ message: "Forwarder not found" });
+      }
+      
+      const userId = (req as any).user?.id;
+      const isUserAdmin = (req as any).user?.role === "admin";
+      if (!isUserAdmin && existing.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const logs = await storage.getForwarderLogs(id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching forwarder logs:", error);
+      res.status(500).json({ message: "Failed to fetch forwarder logs" });
+    }
+  });
+
+  // ============ Channels with Threads Route ============
+  app.get("/api/servers/:serverId/channels-with-threads", isAuthenticated, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+      
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+      
+      // Get channels from database
+      const channels = await storage.getChannelsByServer(serverId);
+      
+      // Try to get threads from Discord API
+      const threads = await discordBot.getThreadsForServer(server.discordId);
+      
+      res.json({
+        channels,
+        threads,
+      });
+    } catch (error) {
+      console.error("Error fetching channels with threads:", error);
+      res.status(500).json({ message: "Failed to fetch channels with threads" });
     }
   });
 

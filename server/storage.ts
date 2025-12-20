@@ -5,6 +5,8 @@ import {
   notifications,
   notificationLogs,
   botSettings,
+  forwarders,
+  forwarderLogs,
   type User,
   type InsertUser,
   type DiscordServer,
@@ -19,6 +21,11 @@ import {
   type InsertBotSettings,
   type NotificationWithRelations,
   type DiscordServerWithChannels,
+  type Forwarder,
+  type InsertForwarder,
+  type ForwarderLog,
+  type InsertForwarderLog,
+  type ForwarderWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, isNull, isNotNull } from "drizzle-orm";
@@ -78,6 +85,19 @@ export interface IStorage {
     messagesSent: number;
     successRate: number;
   }>;
+
+  // Forwarder operations
+  getForwarders(userId?: number): Promise<ForwarderWithRelations[]>;
+  getForwarder(id: number): Promise<ForwarderWithRelations | undefined>;
+  getActiveForwarders(): Promise<ForwarderWithRelations[]>;
+  getForwardersBySourceChannel(channelDiscordId: string): Promise<ForwarderWithRelations[]>;
+  createForwarder(forwarder: InsertForwarder): Promise<Forwarder>;
+  updateForwarder(id: number, forwarder: Partial<Forwarder>): Promise<Forwarder | undefined>;
+  deleteForwarder(id: number): Promise<boolean>;
+
+  // Forwarder log operations
+  createForwarderLog(log: InsertForwarderLog): Promise<ForwarderLog>;
+  getForwarderLogs(forwarderId: number, limit?: number): Promise<ForwarderLog[]>;
 
   // Seed default data
   seedDefaultData(): Promise<void>;
@@ -507,6 +527,180 @@ export class DatabaseStorage implements IStorage {
       messagesSent,
       successRate: Math.round(successRate * 10) / 10,
     };
+  }
+
+  // Forwarder operations
+  async getForwarders(userId?: number): Promise<ForwarderWithRelations[]> {
+    const sourceServers = db.select().from(discordServers).as("sourceServers");
+    const destinationServers = db.select().from(discordServers).as("destinationServers");
+    const sourceChannels = db.select().from(discordChannels).as("sourceChannels");
+    const destinationChannels = db.select().from(discordChannels).as("destinationChannels");
+
+    const baseQuery = db
+      .select({
+        id: forwarders.id,
+        userId: forwarders.userId,
+        name: forwarders.name,
+        sourceServerId: forwarders.sourceServerId,
+        sourceChannelId: forwarders.sourceChannelId,
+        sourceThreadId: forwarders.sourceThreadId,
+        destinationServerId: forwarders.destinationServerId,
+        destinationChannelId: forwarders.destinationChannelId,
+        destinationThreadId: forwarders.destinationThreadId,
+        keywords: forwarders.keywords,
+        matchType: forwarders.matchType,
+        isActive: forwarders.isActive,
+        createdAt: forwarders.createdAt,
+        updatedAt: forwarders.updatedAt,
+      })
+      .from(forwarders)
+      .orderBy(desc(forwarders.createdAt));
+
+    let results;
+    if (userId) {
+      results = await baseQuery.where(eq(forwarders.userId, userId));
+    } else {
+      results = await baseQuery;
+    }
+
+    // Fetch relations separately
+    const enriched = await Promise.all(
+      results.map(async (f) => {
+        const [sourceServer] = await db.select().from(discordServers).where(eq(discordServers.id, f.sourceServerId));
+        const [sourceChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, f.sourceChannelId));
+        const [destinationServer] = await db.select().from(discordServers).where(eq(discordServers.id, f.destinationServerId));
+        const [destinationChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, f.destinationChannelId));
+        
+        return {
+          ...f,
+          sourceServer: sourceServer || null,
+          sourceChannel: sourceChannel || null,
+          destinationServer: destinationServer || null,
+          destinationChannel: destinationChannel || null,
+        };
+      })
+    );
+
+    return enriched;
+  }
+
+  async getForwarder(id: number): Promise<ForwarderWithRelations | undefined> {
+    const [forwarder] = await db.select().from(forwarders).where(eq(forwarders.id, id));
+    if (!forwarder) return undefined;
+
+    const [sourceServer] = await db.select().from(discordServers).where(eq(discordServers.id, forwarder.sourceServerId));
+    const [sourceChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, forwarder.sourceChannelId));
+    const [destinationServer] = await db.select().from(discordServers).where(eq(discordServers.id, forwarder.destinationServerId));
+    const [destinationChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, forwarder.destinationChannelId));
+
+    return {
+      ...forwarder,
+      sourceServer: sourceServer || null,
+      sourceChannel: sourceChannel || null,
+      destinationServer: destinationServer || null,
+      destinationChannel: destinationChannel || null,
+    };
+  }
+
+  async getActiveForwarders(): Promise<ForwarderWithRelations[]> {
+    const results = await db
+      .select()
+      .from(forwarders)
+      .where(eq(forwarders.isActive, true));
+
+    const enriched = await Promise.all(
+      results.map(async (f) => {
+        const [sourceServer] = await db.select().from(discordServers).where(eq(discordServers.id, f.sourceServerId));
+        const [sourceChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, f.sourceChannelId));
+        const [destinationServer] = await db.select().from(discordServers).where(eq(discordServers.id, f.destinationServerId));
+        const [destinationChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, f.destinationChannelId));
+        
+        return {
+          ...f,
+          sourceServer: sourceServer || null,
+          sourceChannel: sourceChannel || null,
+          destinationServer: destinationServer || null,
+          destinationChannel: destinationChannel || null,
+        };
+      })
+    );
+
+    return enriched;
+  }
+
+  async getForwardersBySourceChannel(channelDiscordId: string): Promise<ForwarderWithRelations[]> {
+    const channel = await this.getChannelByDiscordId(channelDiscordId);
+    if (!channel) return [];
+
+    const results = await db
+      .select()
+      .from(forwarders)
+      .where(and(
+        eq(forwarders.sourceChannelId, channel.id),
+        eq(forwarders.isActive, true)
+      ));
+
+    const enriched = await Promise.all(
+      results.map(async (f) => {
+        const [sourceServer] = await db.select().from(discordServers).where(eq(discordServers.id, f.sourceServerId));
+        const [sourceChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, f.sourceChannelId));
+        const [destinationServer] = await db.select().from(discordServers).where(eq(discordServers.id, f.destinationServerId));
+        const [destinationChannel] = await db.select().from(discordChannels).where(eq(discordChannels.id, f.destinationChannelId));
+        
+        return {
+          ...f,
+          sourceServer: sourceServer || null,
+          sourceChannel: sourceChannel || null,
+          destinationServer: destinationServer || null,
+          destinationChannel: destinationChannel || null,
+        };
+      })
+    );
+
+    return enriched;
+  }
+
+  async createForwarder(forwarder: InsertForwarder): Promise<Forwarder> {
+    const [newForwarder] = await db
+      .insert(forwarders)
+      .values(forwarder)
+      .returning();
+    return newForwarder;
+  }
+
+  async updateForwarder(id: number, forwarder: Partial<Forwarder>): Promise<ForwarderWithRelations | undefined> {
+    const [updated] = await db
+      .update(forwarders)
+      .set({ ...forwarder, updatedAt: new Date() })
+      .where(eq(forwarders.id, id))
+      .returning();
+    
+    if (!updated) return undefined;
+    
+    // Return enriched forwarder with relations
+    return this.getForwarder(id);
+  }
+
+  async deleteForwarder(id: number): Promise<boolean> {
+    // Delete logs first
+    await db.delete(forwarderLogs).where(eq(forwarderLogs.forwarderId, id));
+    const result = await db.delete(forwarders).where(eq(forwarders.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Forwarder log operations
+  async createForwarderLog(log: InsertForwarderLog): Promise<ForwarderLog> {
+    const [newLog] = await db.insert(forwarderLogs).values(log).returning();
+    return newLog;
+  }
+
+  async getForwarderLogs(forwarderId: number, limit: number = 20): Promise<ForwarderLog[]> {
+    return await db
+      .select()
+      .from(forwarderLogs)
+      .where(eq(forwarderLogs.forwarderId, forwarderId))
+      .orderBy(desc(forwarderLogs.forwardedAt))
+      .limit(limit);
   }
 
   // Seed default data

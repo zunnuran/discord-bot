@@ -91,6 +91,35 @@ export const notificationLogs = pgTable("notification_logs", {
   error: text("error"),
 });
 
+// Message Forwarders
+export const forwarders = pgTable("forwarders", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  name: varchar("name", { length: 200 }).notNull(),
+  sourceServerId: integer("source_server_id").references(() => discordServers.id).notNull(),
+  sourceChannelId: integer("source_channel_id").references(() => discordChannels.id).notNull(),
+  sourceThreadId: varchar("source_thread_id", { length: 100 }),
+  destinationServerId: integer("destination_server_id").references(() => discordServers.id).notNull(),
+  destinationChannelId: integer("destination_channel_id").references(() => discordChannels.id).notNull(),
+  destinationThreadId: varchar("destination_thread_id", { length: 100 }),
+  keywords: text("keywords").array().notNull(),
+  matchType: varchar("match_type", { length: 50 }).notNull().default("contains"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Forwarder Logs
+export const forwarderLogs = pgTable("forwarder_logs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  forwarderId: integer("forwarder_id").references(() => forwarders.id).notNull(),
+  forwardedAt: timestamp("forwarded_at").defaultNow().notNull(),
+  originalMessage: text("original_message"),
+  matchedKeyword: varchar("matched_keyword", { length: 200 }),
+  status: varchar("status", { length: 50 }).notNull(),
+  error: text("error"),
+});
+
 // Bot Settings (global settings for the Discord bot)
 export const botSettings = pgTable("bot_settings", {
   id: integer("id").primaryKey().default(1),
@@ -141,6 +170,42 @@ export const notificationLogsRelations = relations(notificationLogs, ({ one }) =
 
 export const usersRelations = relations(users, ({ many }) => ({
   notifications: many(notifications),
+  forwarders: many(forwarders),
+}));
+
+export const forwardersRelations = relations(forwarders, ({ one, many }) => ({
+  user: one(users, {
+    fields: [forwarders.userId],
+    references: [users.id],
+  }),
+  sourceServer: one(discordServers, {
+    fields: [forwarders.sourceServerId],
+    references: [discordServers.id],
+    relationName: "sourceServer",
+  }),
+  sourceChannel: one(discordChannels, {
+    fields: [forwarders.sourceChannelId],
+    references: [discordChannels.id],
+    relationName: "sourceChannel",
+  }),
+  destinationServer: one(discordServers, {
+    fields: [forwarders.destinationServerId],
+    references: [discordServers.id],
+    relationName: "destinationServer",
+  }),
+  destinationChannel: one(discordChannels, {
+    fields: [forwarders.destinationChannelId],
+    references: [discordChannels.id],
+    relationName: "destinationChannel",
+  }),
+  logs: many(forwarderLogs),
+}));
+
+export const forwarderLogsRelations = relations(forwarderLogs, ({ one }) => ({
+  forwarder: one(forwarders, {
+    fields: [forwarderLogs.forwarderId],
+    references: [forwarders.id],
+  }),
 }));
 
 // Insert schemas
@@ -192,6 +257,22 @@ export const insertNotificationLogSchema = createInsertSchema(notificationLogs, 
 
 export const insertBotSettingsSchema = createInsertSchema(botSettings).omit({
   updatedAt: true,
+} as const);
+
+export const insertForwarderSchema = createInsertSchema(forwarders, {
+  name: z.string().min(1, "Name is required"),
+  keywords: z.array(z.string()).min(1, "At least one keyword is required"),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+} as const);
+
+export const insertForwarderLogSchema = createInsertSchema(forwarderLogs, {
+  status: z.string().min(1, "Status is required"),
+}).omit({
+  id: true,
+  forwardedAt: true,
 } as const);
 
 // Login schema
@@ -271,4 +352,36 @@ export type NotificationWithRelations = Notification & {
 
 export type DiscordServerWithChannels = DiscordServer & {
   channels?: DiscordChannel[];
+};
+
+export type Forwarder = typeof forwarders.$inferSelect;
+export type InsertForwarder = {
+  userId: number;
+  name: string;
+  sourceServerId: number;
+  sourceChannelId: number;
+  sourceThreadId?: string | null;
+  destinationServerId: number;
+  destinationChannelId: number;
+  destinationThreadId?: string | null;
+  keywords: string[];
+  matchType?: string;
+  isActive?: boolean | null;
+};
+
+export type ForwarderLog = typeof forwarderLogs.$inferSelect;
+export type InsertForwarderLog = {
+  forwarderId: number;
+  originalMessage?: string | null;
+  matchedKeyword?: string | null;
+  status: string;
+  error?: string | null;
+};
+
+export type ForwarderWithRelations = Forwarder & {
+  sourceServer?: DiscordServer | null;
+  sourceChannel?: DiscordChannel | null;
+  destinationServer?: DiscordServer | null;
+  destinationChannel?: DiscordChannel | null;
+  user?: User | null;
 };
