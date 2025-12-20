@@ -367,22 +367,26 @@ function ForwarderDialog({
           </div>
         </div>
 
-        {sourceChannelsData?.threads && sourceChannelsData.threads.length > 0 && (
-          <div>
-            <Label>Source Thread (Optional)</Label>
-            <Select value={sourceThreadId || "none"} onValueChange={(v) => setSourceThreadId(v === "none" ? "" : v)}>
-              <SelectTrigger data-testid="select-source-thread">
-                <SelectValue placeholder="Select thread (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No thread</SelectItem>
-                {sourceChannelsData.threads.map(thread => (
-                  <SelectItem key={thread.id} value={thread.id}>{thread.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {(() => {
+          const selectedChannel = sourceChannelsData?.channels.find(c => c.id.toString() === sourceChannelId);
+          const filteredThreads = sourceChannelsData?.threads?.filter(t => t.parentId === selectedChannel?.discordId) || [];
+          return filteredThreads.length > 0 && (
+            <div>
+              <Label>Source Thread (Optional)</Label>
+              <Select value={sourceThreadId || "none"} onValueChange={(v) => setSourceThreadId(v === "none" ? "" : v)}>
+                <SelectTrigger data-testid="select-source-thread">
+                  <SelectValue placeholder="Select thread (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No thread</SelectItem>
+                  {filteredThreads.map(thread => (
+                    <SelectItem key={thread.id} value={thread.id}>{thread.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -413,22 +417,26 @@ function ForwarderDialog({
           </div>
         </div>
 
-        {destChannelsData?.threads && destChannelsData.threads.length > 0 && (
-          <div>
-            <Label>Destination Thread (Optional)</Label>
-            <Select value={destinationThreadId || "none"} onValueChange={(v) => setDestinationThreadId(v === "none" ? "" : v)}>
-              <SelectTrigger data-testid="select-dest-thread">
-                <SelectValue placeholder="Select thread (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No thread</SelectItem>
-                {destChannelsData.threads.map(thread => (
-                  <SelectItem key={thread.id} value={thread.id}>{thread.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {(() => {
+          const selectedChannel = destChannelsData?.channels.find(c => c.id.toString() === destinationChannelId);
+          const filteredThreads = destChannelsData?.threads?.filter(t => t.parentId === selectedChannel?.discordId) || [];
+          return filteredThreads.length > 0 && (
+            <div>
+              <Label>Destination Thread (Optional)</Label>
+              <Select value={destinationThreadId || "none"} onValueChange={(v) => setDestinationThreadId(v === "none" ? "" : v)}>
+                <SelectTrigger data-testid="select-dest-thread">
+                  <SelectValue placeholder="Select thread (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No thread</SelectItem>
+                  {filteredThreads.map(thread => (
+                    <SelectItem key={thread.id} value={thread.id}>{thread.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })()}
 
         <div>
           <Label htmlFor="keywords">Keywords (comma-separated)</Label>
