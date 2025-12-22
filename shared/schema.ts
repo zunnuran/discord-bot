@@ -128,6 +128,7 @@ export const botSettings = pgTable("bot_settings", {
   maxMessagesPerMinute: integer("max_messages_per_minute").default(10),
   enableAnalytics: boolean("enable_analytics").default(true),
   autoCleanupDays: integer("auto_cleanup_days").default(30),
+  workingDays: integer("working_days").array().default([1, 2, 3, 4, 5]),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

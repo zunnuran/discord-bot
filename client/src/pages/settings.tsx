@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -32,7 +33,18 @@ interface BotSettings {
   maxMessagesPerMinute: number | null;
   enableAnalytics: boolean | null;
   autoCleanupDays: number | null;
+  workingDays: number[] | null;
 }
+
+const DAYS_OF_WEEK = [
+  { id: 0, label: "Sunday" },
+  { id: 1, label: "Monday" },
+  { id: 2, label: "Tuesday" },
+  { id: 3, label: "Wednesday" },
+  { id: 4, label: "Thursday" },
+  { id: 5, label: "Friday" },
+  { id: 6, label: "Saturday" },
+];
 
 interface BotStatus {
   isOnline: boolean;
@@ -60,11 +72,25 @@ export default function Settings() {
     maxMessagesPerMinute: settings?.maxMessagesPerMinute || 10,
     enableAnalytics: settings?.enableAnalytics ?? true,
     autoCleanupDays: settings?.autoCleanupDays || 30,
+    workingDays: settings?.workingDays || [1, 2, 3, 4, 5],
     rateLimitEnabled: true,
     enableWebhooks: true,
     notificationLimit: 50,
     logLevel: "info",
   });
+
+  useEffect(() => {
+    if (settings) {
+      setLocalSettings(prev => ({
+        ...prev,
+        defaultTimezone: settings.defaultTimezone || "UTC",
+        maxMessagesPerMinute: settings.maxMessagesPerMinute || 10,
+        enableAnalytics: settings.enableAnalytics ?? true,
+        autoCleanupDays: settings.autoCleanupDays || 30,
+        workingDays: settings.workingDays || [1, 2, 3, 4, 5],
+      }));
+    }
+  }, [settings]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: Partial<BotSettings>) => {
@@ -93,6 +119,18 @@ export default function Settings() {
       maxMessagesPerMinute: localSettings.maxMessagesPerMinute,
       enableAnalytics: localSettings.enableAnalytics,
       autoCleanupDays: localSettings.autoCleanupDays,
+      workingDays: localSettings.workingDays,
+    });
+  };
+
+  const toggleWorkingDay = (dayId: number) => {
+    setLocalSettings(prev => {
+      const days = prev.workingDays || [];
+      if (days.includes(dayId)) {
+        return { ...prev, workingDays: days.filter(d => d !== dayId) };
+      } else {
+        return { ...prev, workingDays: [...days, dayId].sort((a, b) => a - b) };
+      }
     });
   };
 
@@ -318,6 +356,38 @@ export default function Settings() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-medium">Working Days</Label>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Select which days count as working days for the "Working Days" repeat option
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {DAYS_OF_WEEK.map((day) => (
+                          <div 
+                            key={day.id} 
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`day-${day.id}`}
+                              checked={(localSettings.workingDays || []).includes(day.id)}
+                              onCheckedChange={() => toggleWorkingDay(day.id)}
+                              data-testid={`checkbox-day-${day.id}`}
+                            />
+                            <Label 
+                              htmlFor={`day-${day.id}`}
+                              className="text-sm font-normal cursor-pointer"
+                            >
+                              {day.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
                   <div className="space-y-2">
                     <Label htmlFor="notificationLimit">Maximum Active Notifications</Label>
                     <Input

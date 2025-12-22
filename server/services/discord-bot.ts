@@ -281,16 +281,31 @@ class DiscordBotService {
 
       console.log(`Processing ${dueNotifications.length} due notification(s)`);
 
+      const settings = await storage.getBotSettings();
+      const workingDays = settings?.workingDays || [1, 2, 3, 4, 5];
+      const today = new Date().getDay();
+
       for (const notification of dueNotifications) {
-        await this.sendNotification(notification);
+        if (notification.repeatType === "working_days" && !workingDays.includes(today)) {
+          const nextScheduled = this.findNextWorkingDay(new Date(), workingDays);
+          if (nextScheduled) {
+            const nextWithTime = new Date(nextScheduled);
+            const originalTime = notification.scheduleDate;
+            nextWithTime.setHours(originalTime.getHours(), originalTime.getMinutes(), 0, 0);
+            await storage.updateNotification(notification.id, { nextScheduled: nextWithTime });
+          }
+          continue;
+        }
+        await this.sendNotificationWithWorkingDays(notification, workingDays);
       }
     } catch (error) {
       console.error("Error processing notifications:", error);
     }
   }
 
-  private async sendNotification(
+  private async sendNotificationWithWorkingDays(
     notification: NotificationWithRelations,
+    workingDays: number[],
   ): Promise<void> {
     try {
       if (!notification.channel?.discordId) {
@@ -334,7 +349,7 @@ class DiscordBotService {
       await this.logNotificationResult(notification.id, "success");
 
       const now = new Date();
-      const nextScheduled = this.calculateNextScheduled(notification);
+      const nextScheduled = this.calculateNextScheduledWithWorkingDays(notification, workingDays);
 
       if (
         nextScheduled &&
@@ -365,11 +380,13 @@ class DiscordBotService {
     }
   }
 
-  private calculateNextScheduled(
+  private calculateNextScheduledWithWorkingDays(
     notification: NotificationWithRelations,
+    workingDays: number[],
   ): Date | null {
     const now = new Date();
-    const current = notification.nextScheduled || notification.scheduleDate;
+    const scheduled = notification.nextScheduled || notification.scheduleDate;
+    const current = scheduled > now ? scheduled : now;
 
     switch (notification.repeatType) {
       case "once":
@@ -393,9 +410,25 @@ class DiscordBotService {
         return next;
       }
 
+      case "working_days": {
+        return this.findNextWorkingDay(current, workingDays);
+      }
+
       default:
         return null;
     }
+  }
+
+  private findNextWorkingDay(fromDate: Date, workingDays: number[]): Date {
+    const next = new Date(fromDate);
+    next.setDate(next.getDate() + 1);
+    for (let i = 0; i < 7; i++) {
+      if (workingDays.includes(next.getDay())) {
+        return next;
+      }
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
   }
 
   private async logNotificationResult(
