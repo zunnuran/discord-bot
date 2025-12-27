@@ -35,7 +35,7 @@ const formSchema = z.object({
   message: z.string().min(1, "Message is required").max(2000, "Message too long"),
   scheduleDate: z.string().min(1, "Date is required"),
   scheduleTime: z.string().min(1, "Time is required"),
-  repeatType: z.enum(["once", "daily", "weekly", "monthly"]),
+  repeatType: z.enum(["once", "daily", "weekly", "monthly", "working_days"]),
   endDate: z.string().optional(),
   timezone: z.string().default("UTC"),
   mentions: z.boolean().default(false),
@@ -61,11 +61,11 @@ export default function CreateNotificationModal({ isOpen, onClose }: CreateNotif
       message: "",
       scheduleDate: "",
       scheduleTime: "",
-      repeatType: "once",
+      repeatType: "working_days",
       endDate: "",
-      timezone: "UTC",
-      mentions: false,
-      embeds: false,
+      timezone: "Asia/Karachi",
+      mentions: true,
+      embeds: true,
       testMessage: false,
     },
   });
@@ -294,6 +294,7 @@ export default function CreateNotificationModal({ isOpen, onClose }: CreateNotif
                             <SelectItem value="daily">Daily</SelectItem>
                             <SelectItem value="weekly">Weekly</SelectItem>
                             <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="working_days">Working Days</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

@@ -340,9 +340,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateNotification(id: number, notification: Partial<Notification>): Promise<Notification | undefined> {
+      console.log(notification)
     const [updated] = await db
       .update(notifications)
-      .set({ ...notification, updatedAt: new Date() })
+      .set({ ...notification,
+          scheduleDate: notification.scheduleDate
+              ? new Date(notification.scheduleDate)
+              : undefined,
+          endDate: notification.endDate
+              ? new Date(notification.endDate)
+              : null, updatedAt: new Date() })
       .where(eq(notifications.id, id))
       .returning();
     return updated;

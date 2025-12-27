@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 - **Channel Management**: Dynamic channel fetching and caching
 
 ### Notification System
-- **Scheduling**: Advanced scheduling with repeat patterns (once, daily, weekly, monthly)
+- **Scheduling**: Advanced scheduling with repeat patterns (once, daily, weekly, monthly, working_days)
 - **Timezone Support**: Full timezone handling for accurate scheduling
 - **Message Features**: Support for mentions, embeds, and rich formatting
 - **Logging**: Comprehensive notification delivery tracking

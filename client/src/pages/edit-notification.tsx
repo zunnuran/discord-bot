@@ -23,7 +23,7 @@ const formSchema = z.object({
   message: z.string().min(1, "Message is required").max(2000, "Message must be less than 2000 characters"),
   scheduleDate: z.string().min(1, "Schedule date is required"),
   scheduleTime: z.string().min(1, "Schedule time is required"),
-  repeatType: z.enum(["once", "daily", "weekly", "monthly"]),
+  repeatType: z.enum(["once", "daily", "weekly", "monthly", "working_days"]),
   endDate: z.string().optional(),
   timezone: z.string().default("UTC"),
   mentions: z.boolean().default(false),
@@ -90,7 +90,7 @@ export default function EditNotification() {
         message: notification.message,
         scheduleDate,
         scheduleTime,
-        repeatType: notification.repeatType as "once" | "daily" | "weekly" | "monthly",
+        repeatType: notification.repeatType as "once" | "daily" | "weekly" | "monthly" | "working_days",
         endDate: notification.endDate ? new Date(notification.endDate).toISOString().split("T")[0] : "",
         timezone: notification.timezone || "UTC",
         mentions: notification.mentions ?? false,
@@ -99,7 +99,7 @@ export default function EditNotification() {
       });
       setSelectedServerId(String(notification.serverId));
     }
-  }, [notification, form]);
+  }, [notification, form, channels, servers]);
 
   const updateMutation = useMutation({
     mutationFn: (data: z.infer<typeof formSchema>) => {
@@ -340,6 +340,7 @@ export default function EditNotification() {
                                 <SelectItem value="daily">Daily</SelectItem>
                                 <SelectItem value="weekly">Weekly</SelectItem>
                                 <SelectItem value="monthly">Monthly</SelectItem>
+                                <SelectItem value="working_days">Working Days</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />

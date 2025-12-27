@@ -192,6 +192,7 @@ export default function Notifications() {
                     <SelectItem value="daily">Daily</SelectItem>
                     <SelectItem value="weekly">Weekly</SelectItem>
                     <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="working_days">Working Days</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

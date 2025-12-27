@@ -45,7 +45,7 @@ const notificationSchema = z.object({
   title: z.string().optional().nullable(),
   message: z.string().min(1, "Message is required"),
   scheduleDate: z.coerce.date(),
-  repeatType: z.enum(["once", "daily", "weekly", "monthly"]).optional(),
+  repeatType: z.enum(["once", "daily", "weekly", "monthly", "working_days"]).optional(),
   endDate: z.coerce.date().optional().nullable(),
   isActive: z.boolean().optional(),
   timezone: z.string().optional(),
