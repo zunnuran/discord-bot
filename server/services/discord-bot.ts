@@ -286,13 +286,65 @@ class DiscordBotService {
       const today = new Date().getDay();
 
       for (const notification of dueNotifications) {
-        if (notification.repeatType === "working_days" && !workingDays.includes(today)) {
-          const nextScheduled = this.findNextWorkingDay(new Date(), workingDays);
+        const now = new Date();
+        const scheduledTime =
+          notification.nextScheduled || notification.scheduleDate;
+
+        // Check if notification is overdue by more than 5 minutes
+        if (now.getTime() - scheduledTime.getTime() > 5 * 60 * 1000) {
+          console.log(
+            `Skipping notification ${notification.id}: overdue by ${Math.round(
+              (now.getTime() - scheduledTime.getTime()) / 60000,
+            )} minutes`,
+          );
+
+          await this.logNotificationResult(
+            notification.id,
+            "failed",
+            "Not sent due to server down",
+          );
+
+          const nextScheduled = this.calculateNextScheduledWithWorkingDays(
+            notification,
+            workingDays,
+          );
+
+          if (
+            nextScheduled &&
+            (!notification.endDate || nextScheduled <= notification.endDate)
+          ) {
+            await storage.updateNotification(notification.id, {
+              nextScheduled,
+            });
+          } else {
+            await storage.updateNotification(notification.id, {
+              isActive: false,
+              nextScheduled: null,
+            });
+          }
+          continue;
+        }
+
+        if (
+          notification.repeatType === "working_days" &&
+          !workingDays.includes(today)
+        ) {
+          const nextScheduled = this.findNextWorkingDay(
+            new Date(),
+            workingDays,
+          );
           if (nextScheduled) {
             const nextWithTime = new Date(nextScheduled);
             const originalTime = notification.scheduleDate;
-            nextWithTime.setHours(originalTime.getHours(), originalTime.getMinutes(), 0, 0);
-            await storage.updateNotification(notification.id, { nextScheduled: nextWithTime });
+            nextWithTime.setHours(
+              originalTime.getHours(),
+              originalTime.getMinutes(),
+              0,
+              0,
+            );
+            await storage.updateNotification(notification.id, {
+              nextScheduled: nextWithTime,
+            });
           }
           continue;
         }
