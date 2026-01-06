@@ -23,7 +23,7 @@ export default function Auth() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!username || !password) {
       toast({
         title: "Error",
@@ -93,7 +93,7 @@ export default function Auth() {
             {error && (
               <p className="text-sm text-red-500" data-testid="text-error">{error}</p>
             )}
-            <Button 
+            <Button
               type="submit"
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
               size="lg"
@@ -109,9 +109,6 @@ export default function Auth() {
                 "Sign In"
               )}
             </Button>
-            <p className="text-xs text-muted-foreground text-center mt-4">
-              Default admin: admin / admin123
-            </p>
           </form>
         </CardContent>
       </Card>
